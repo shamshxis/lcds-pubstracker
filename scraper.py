@@ -8,223 +8,157 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # --- CONFIGURATION ---
 mailto = os.environ.get('USER_EMAIL', 'research_team@example.com')
-HEADERS = {'User-Agent': f'OxfordSubUnitTracker/8.0 (mailto:{mailto})'}
+HEADERS = {'User-Agent': f'OxfordSubUnitTracker/Final/1.0 (mailto:{mailto})'}
 
-# --- DATE RANGES ---
-# PRIORITY 1: The "Sprint" (Future/Recent) - Aggressive Fetching
-# Captures preprints and 2025-2027 papers
-SPRINT_START = "2025-01-01"
-
-# PRIORITY 2: The "Marathon" (Archive) - Gentle Fetching
-# Captures historical context from Sep 2019 to end of 2024
-MARATHON_START = "2019-09-01"
-MARATHON_END = "2024-12-31"
-
+# --- 1. STAFF DISCOVERY (Your Original Logic) ---
 def get_staff_list():
-    """Scrapes the LCDS People page for ALL staff."""
     url = "https://www.demography.ox.ac.uk/people"
-    print(f"[{datetime.now().time()}] Fetching full staff list...")
+    print(f"[{datetime.now().time()}] Fetching staff list from website...")
     names = set()
-    
     try:
         res = requests.get(url, headers=HEADERS, timeout=20)
-        res.raise_for_status()
         soup = BeautifulSoup(res.text, 'html.parser')
-
+        
+        # specific selectors from your original script
         selectors = [
             'h3.paragraph-side-title', 
-            '.views-field-title a', 
-            '.person-name',
-            'h3.node__title',
-            'span.field-content h3'
+            'div.person-name', 
+            'span.field-content h3', 
+            '.views-field-title a'
         ]
         
         for s in selectors:
             for el in soup.select(s):
-                raw_name = el.get_text(strip=True)
-                clean = raw_name.replace('Dr ', '').replace('Prof ', '').replace('Professor ', '').strip()
-                junk_terms = ["View profile", "Read more", "Contact", "Email", "Research"]
-                if any(x in clean for x in junk_terms): continue
-                
-                if clean and len(clean.split()) >= 2 and len(clean) < 40:
+                clean = el.get_text(strip=True).replace('Dr ', '').replace('Prof ', '').replace('Professor ', '').strip()
+                if clean and len(clean.split()) >= 2:
                     names.add(clean)
-        
-        staff_list = sorted(list(names))
-        print(f"[{datetime.now().time()}] Found {len(staff_list)} people.")
-        return staff_list
-
+                    
+        return sorted(list(names))
     except Exception as e:
-        print(f"[ERROR] Failed to scrape staff: {e}")
+        print(f"Error scraping staff: {e}")
         return []
 
-def get_orcid(name):
-    """Resolves name to ORCID via OpenAlex."""
+# --- 2. ORCID RESOLUTION (With STRICT Affiliation Check) ---
+def resolve_orcid(name):
+    """
+    Finds ORCID but ONLY if the person is affiliated with Oxford/Demography.
+    This prevents picking up 'John Smith' the engineer.
+    """
     try:
         r = requests.get("https://api.openalex.org/authors", params={'search': name}, headers=HEADERS, timeout=5)
         if r.status_code == 200:
-            results = r.json().get('results', [])
-            if results: return results[0]['orcid'].replace('https://orcid.org/', '')
+            for author in r.json().get('results', []):
+                orcid = author.get('orcid')
+                if not orcid: continue
+                
+                # CHECK AFFILIATIONS
+                affs = [a.get('institution', {}).get('display_name', '').lower() for a in author.get('affiliations', [])]
+                last = author.get('last_known_institution', {}).get('display_name', '').lower()
+                all_text = " ".join(affs + [last])
+                
+                # Your original keywords + specific LCDS terms
+                targets = ['oxford', 'leverhulme', 'demographic science', 'nuffield', 'sociology', 'population', 'lcds']
+                
+                if any(t in all_text for t in targets):
+                    return orcid.replace('https://orcid.org/', '')
     except: pass
     return None
 
-def standardize_date(date_parts):
-    """Converts Crossref [YYYY, MM, DD] to YYYY-MM-DD string."""
+# --- 3. DATE STANDARDIZATION ---
+def standardize_date(date_obj):
+    """Parses Crossref dates robustly."""
     try:
-        if not date_parts or not isinstance(date_parts, list): return None
-        p = date_parts[0]
-        if len(p) == 3: return "{:04d}-{:02d}-{:02d}".format(*p)
-        if len(p) == 2: return "{:04d}-{:02d}-01".format(*p)
-        if len(p) == 1: return "{:04d}-01-01".format(*p)
-    except: return None
+        # Handle date-parts [2024, 1, 15]
+        if 'date-parts' in date_obj:
+            p = date_obj['date-parts'][0]
+            if len(p) == 3: return "{:04d}-{:02d}-{:02d}".format(*p)
+            if len(p) == 2: return "{:04d}-{:02d}-01".format(*p)
+            if len(p) == 1: return "{:04d}-01-01".format(*p)
+        # Handle timestamp string
+        if 'date-time' in date_obj:
+            return str(date_obj['date-time']).split('T')[0]
+    except: pass
     return None
 
-def fetch_crossref_batch(name, orcid, date_filter_str):
-    """
-    Generic fetcher for Crossref.
-    date_filter_str example: "from-pub-date:2025-01-01" or "from-pub-date:2019-09-01,until-pub-date:2024-12-31"
-    """
+# --- 4. CROSSREF FETCH (Pure Source) ---
+def fetch_crossref(name, orcid):
     works = []
     if not orcid: return []
 
     try:
-        # Sort by 'created' ensures we see the item the moment it is registered (Preprints)
-        url = f"https://api.crossref.org/works?filter=orcid:{orcid},{date_filter_str}&sort=created&order=desc&rows=100"
+        # Fetch recent 50 items, sort by CREATED to catch preprints immediately
+        url = f"https://api.crossref.org/works?filter=orcid:{orcid},from-pub-date:2020-01-01&sort=created&order=desc&rows=50"
         r = requests.get(url, headers=HEADERS, timeout=20)
         
         if r.status_code == 200:
             for item in r.json().get('message', {}).get('items', []):
                 if 'DOI' not in item: continue
                 
-                # Type Detection
-                raw_type = item.get('type', '')
-                subtype = item.get('subtype', '')
-                pub_type = "Preprint" if (raw_type == 'posted-content' or subtype == 'preprint') else "Journal Article"
+                # --- TYPE DETECTION ---
+                ptype = "Preprint" if (item.get('type') == 'posted-content' or item.get('subtype') == 'preprint') else "Journal Article"
 
-                # Date Logic
+                # --- DATE LOGIC ---
+                # Priority: Created (Minted) -> Published Online -> Published Print
                 date_obj = item.get('created') or item.get('published-online') or item.get('published-print')
-                final_date = None
-                
-                if date_obj and 'date-parts' in date_obj:
-                    final_date = standardize_date(date_obj['date-parts'])
-                elif date_obj and 'date-time' in date_obj:
-                    final_date = str(date_obj['date-time']).split('T')[0]
-
+                final_date = standardize_date(date_obj)
                 if not final_date: final_date = datetime.now().strftime('%Y-%m-%d')
 
-                # Metadata
-                title = item.get('title', ['Untitled'])[0]
-                journal = item.get('container-title', [''])[0] if item.get('container-title') else "Preprint/Other"
-                auth_list = [f"{a.get('given','')} {a.get('family','')}" for a in item.get('author', [])]
-                all_authors = ", ".join(auth_list)
+                # --- JOURNAL / CONTAINER ---
+                # This replaces "Journal Area". We use the actual Journal Name.
+                container = item.get('container-title', [''])[0]
+                if not container:
+                    container = item.get('institution', {}).get('name') # Sometimes preprints store it here
+                if not container:
+                    container = "Preprint/Working Paper"
 
                 works.append({
                     'Date Available Online': final_date,
                     'LCDS Author': name,
-                    'All Authors': all_authors,
+                    'All Authors': ", ".join([f"{a.get('given','')} {a.get('family','')}" for a in item.get('author', [])]),
                     'DOI': f"https://doi.org/{item['DOI']}",
-                    'Paper Title': title,
-                    'Journal Name': journal,
-                    'Journal Area': "Pending",
-                    'Year of Publication': final_date.split('-')[0],
+                    'Paper Title': item.get('title', ['Untitled'])[0],
+                    'Journal Name': container,
                     'Citation Count': item.get('is-referenced-by-count', 0),
-                    'Publication Type': pub_type,
+                    'Publication Type': ptype,
                     'DOI_Clean': item['DOI'].lower().strip()
                 })
-    except Exception: pass
+    except: pass
     return works
 
-def enrich_topics(records):
-    """Bulk fetch topics from OpenAlex."""
-    if not records: return []
-    dois = [r['DOI_Clean'] for r in records]
-    doi_map = {}
-    
-    def chunker(seq, size):
-        return (seq[pos:pos + size] for pos in range(0, len(seq), size))
-
-    for chunk in chunker(dois, 40):
-        try:
-            doi_filter = "|".join([f"doi:https://doi.org/{d}" for d in chunk])
-            url = f"https://api.openalex.org/works?filter={doi_filter}&per-page=50&select=doi,primary_topic"
-            r = requests.get(url, headers=HEADERS, timeout=10)
-            if r.status_code == 200:
-                for item in r.json().get('results', []):
-                    d_key = item.get('doi', '').replace('https://doi.org/', '').lower().strip()
-                    topic = "Multidisciplinary"
-                    if item.get('primary_topic'):
-                        topic = item['primary_topic'].get('field', {}).get('display_name', 'Multidisciplinary')
-                    doi_map[d_key] = topic
-        except: pass
-
-    for r in records:
-        if r['DOI_Clean'] in doi_map:
-            r['Journal Area'] = doi_map[r['DOI_Clean']]
-        else: r['Journal Area'] = "Multidisciplinary"
-    return records
-
-def process_author_sprint(name):
-    """Phase 1: Recent data only (2025-2027)"""
-    orcid = get_orcid(name)
+def process_author(name):
+    orcid = resolve_orcid(name)
     if not orcid: return []
-    # Filter for Sprint
-    filter_str = f"from-pub-date:{SPRINT_START}"
-    records = fetch_crossref_batch(name, orcid, filter_str)
-    return enrich_topics(records)
+    return fetch_crossref(name, orcid)
 
-def process_author_marathon(name):
-    """Phase 2: Archive data (2019-2024)"""
-    orcid = get_orcid(name)
-    if not orcid: return []
-    # Filter for Marathon
-    filter_str = f"from-pub-date:{MARATHON_START},until-pub-date:{MARATHON_END}"
-    records = fetch_crossref_batch(name, orcid, filter_str)
-    return enrich_topics(records)
-
+# --- MAIN ---
 if __name__ == "__main__":
     os.makedirs("data", exist_ok=True)
     staff = get_staff_list()
     
-    if not staff:
-        print("No staff found.")
-        exit()
-
+    print(f"Scanning {len(staff)} affiliated authors...")
     all_records = []
-
-    # --- PHASE 1: THE SPRINT (Recent / High Priority) ---
-    print(f"\n>>> PHASE 1: SPRINT ({SPRINT_START}+) with 8 Workers")
-    with ThreadPoolExecutor(max_workers=8) as exc:
-        futures = {exc.submit(process_author_sprint, n): n for n in staff}
-        for f in as_completed(futures):
-            res = f.result()
-            if res: all_records.extend(res)
-    print(f"Phase 1 Complete. Records so far: {len(all_records)}")
-
-    # --- PHASE 2: THE MARATHON (Archive / Low Priority) ---
-    print(f"\n>>> PHASE 2: MARATHON ({MARATHON_START} to {MARATHON_END}) with 3 Workers")
-    with ThreadPoolExecutor(max_workers=3) as exc:
-        futures = {exc.submit(process_author_marathon, n): n for n in staff}
-        for f in as_completed(futures):
-            res = f.result()
-            if res: all_records.extend(res)
     
-    # --- SAVE ---
+    # 8 Workers is safe for this lighter, filtered workload
+    with ThreadPoolExecutor(max_workers=8) as exc:
+        futures = {exc.submit(process_author, n): n for n in staff}
+        for f in as_completed(futures):
+            res = f.result()
+            if res: all_records.extend(res)
+
     if all_records:
         df = pd.DataFrame(all_records)
         df = df.sort_values(by='Date Available Online', ascending=False)
-        # Deduplicate (Crucial because ranges might have edge case overlaps)
         df = df.drop_duplicates(subset=['DOI_Clean'], keep='first')
         df = df.drop(columns=['DOI_Clean'])
         
-        expected_cols = ['Date Available Online', 'LCDS Author', 'All Authors', 'DOI', 
-                         'Paper Title', 'Journal Name', 'Journal Area', 
-                         'Year of Publication', 'Citation Count', 'Publication Type']
-        
-        for c in expected_cols:
+        # Ensure consistency
+        cols = ['Date Available Online', 'LCDS Author', 'All Authors', 'DOI', 
+                'Paper Title', 'Journal Name', 'Citation Count', 'Publication Type']
+        for c in cols:
             if c not in df.columns: df[c] = ""
             
-        df = df[expected_cols]
+        df = df[cols]
         df.to_csv("data/lcds_publications.csv", index=False)
-        print(f"\nSUCCESS: Saved {len(df)} records (Sprint + Marathon).")
+        print(f"SUCCESS: Saved {len(df)} records.")
     else:
         print("WARNING: No records found.")
-        pd.DataFrame(columns=['Date Available Online']).to_csv("data/lcds_publications.csv", index=False)
