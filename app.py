@@ -41,10 +41,11 @@ def load_data():
     url = "https://raw.githubusercontent.com/shamshxis/lcds-pubstracker/data/data/lcds_publications.csv"
     try:
         df = pd.read_csv(url)
-        # Defaults
+        # Defaults for missing columns
         if 'Publication Type' not in df.columns: df['Publication Type'] = 'Journal Article'
-        if 'Journal Area' not in df.columns: df['Journal Area'] = 'Multidisciplinary'
+        if 'Journal Name' not in df.columns: df['Journal Name'] = 'Unknown'
         if 'Citation Count' not in df.columns: df['Citation Count'] = 0
+        if 'Year of Publication' not in df.columns: df['Year of Publication'] = datetime.now().year
         
         df['Date Available Online'] = pd.to_datetime(df['Date Available Online'], errors='coerce')
         df['Citation Count'] = pd.to_numeric(df['Citation Count'], errors='coerce').fillna(0)
@@ -81,7 +82,7 @@ st.sidebar.download_button("Download CSV", csv_data, f"lcds_data_{datetime.now()
 
 # --- DASHBOARD ---
 st.title("Leverhulme Centre for Demographic Science")
-st.markdown('<div class="trendy-sub">Measuring our impact across the years.</div>', unsafe_allow_html=True)
+st.markdown('<div class="trendy-sub">Measuring our impact over the years.</div>', unsafe_allow_html=True)
 st.markdown(f"**Viewing:** {time_filter} | **Records Found:** {len(df_filtered)}")
 st.divider()
 
@@ -94,45 +95,58 @@ c4.metric("Active Authors", df_filtered['LCDS Author'].nunique())
 
 st.divider()
 
-# Plots
-c1, c2 = st.columns(2)
-with c1:
-    st.subheader("📊 Impact by Field")
-    if 'Journal Area' in df_filtered.columns:
-        df_area = df_filtered.groupby('Journal Area')['Citation Count'].sum().reset_index()
-        df_area = df_area[df_area['Journal Area'] != 'Multidisciplinary']
-        if not df_area.empty:
-            fig = px.pie(df_area, values='Citation Count', names='Journal Area', hole=0.4, color_discrete_sequence=px.colors.qualitative.Prism)
-            st.plotly_chart(fig, use_container_width=True)
-        else: st.info("No citation data available.")
+# --- PLOTS ---
+col1, col2 = st.columns([2, 1])  # Make the citation chart wider (2/3rds)
 
-with c2:
-    st.subheader("📑 Type Distribution")
+with col1:
+    st.subheader("📈 Citation Momentum")
+    if 'Year of Publication' in df_filtered.columns:
+        # Group citations by Year
+        df_cite = df_filtered.groupby('Year of Publication')['Citation Count'].sum().reset_index()
+        df_cite = df_cite.sort_values('Year of Publication')
+        
+        if not df_cite.empty:
+            # Create a smooth Area Chart
+            fig = px.area(df_cite, x='Year of Publication', y='Citation Count', 
+                          title="Citations Accumulated by Publication Year",
+                          markers=True,
+                          color_discrete_sequence=['#002147']) # Oxford Blue
+            
+            fig.update_layout(xaxis_type='category', plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)")
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.info("No citation data available for this period.")
+
+with col2:
+    st.subheader("📑 Output Type")
     df_type = df_filtered['Publication Type'].value_counts().reset_index()
     if not df_type.empty:
         df_type.columns = ['Publication Type', 'Count']
-        fig2 = px.pie(df_type, values='Count', names='Publication Type', hole=0.4, color_discrete_sequence=px.colors.qualitative.Safe)
+        # Donut chart
+        fig2 = px.pie(df_type, values='Count', names='Publication Type', hole=0.5, 
+                      color_discrete_sequence=['#C49102', '#002147']) # Gold & Blue
+        fig2.update_layout(showlegend=False, plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)")
         st.plotly_chart(fig2, use_container_width=True)
-    else: st.info("No data available.")
+    else:
+        st.info("No data available.")
 
-# --- NATIVE TABLE (Reverted) ---
+# --- TABLE ---
 st.subheader("📄 Recent Publications")
 
 # Configure Columns for display
-# 1. We format dates as YYYY-MM-DD strings for cleaner display
 if 'Date Available Online' in df_filtered.columns:
     df_filtered['Date Display'] = df_filtered['Date Available Online'].dt.strftime('%Y-%m-%d')
 else:
     df_filtered['Date Display'] = ""
 
-# 2. Select columns to show
+# Select columns to show
 cols_to_show = ['Date Display', 'LCDS Author', 'Paper Title', 'Journal Name', 'Publication Type', 'Citation Count', 'DOI']
-df_display = df_filtered[cols_to_show].copy()
+df_display = df_filtered[[c for c in cols_to_show if c in df_filtered.columns]].copy()
 
-# 3. Rename for UI
+# Rename for UI
 df_display = df_display.rename(columns={'Date Display': 'Date', 'Publication Type': 'Type', 'Citation Count': 'Cites'})
 
-# 4. Render as native DataFrame with scrolling and Link support
+# Render native DataFrame
 st.dataframe(
     df_display,
     use_container_width=True,
@@ -151,4 +165,4 @@ st.dataframe(
 )
 
 # Footer
-st.markdown("""<div class="footer">© University of Oxford 2026 - All Rights Reserved. | <a href="https://www.demography.ox.ac.uk" target="_blank">Visit our Website or Follow us on Social Media.</a></div>""", unsafe_allow_html=True)
+st.markdown("""<div class="footer">© University of Oxford 2026 - All Rights Reserved. | <a href="https://www.demography.ox.ac.uk" target="_blank">demography.ox.ac.uk</a></div>""", unsafe_allow_html=True)
