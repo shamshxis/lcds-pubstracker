@@ -25,6 +25,9 @@ st.markdown("""
                 background: linear-gradient(90deg, #64B5F6 0%, #FFD54F 100%); 
                 -webkit-background-clip: text; -webkit-text-fill-color: transparent;
             }
+            div[data-testid="stDataFrame"] th {
+                color: #FFD54F !important;
+            }
         }
 
         .footer {
@@ -41,7 +44,6 @@ st.markdown("""
 # --- LOAD DATA ---
 @st.cache_data(ttl=3600) 
 def load_data():
-    # Priority: Local -> GitHub Raw
     url = "data/lcds_publications.csv"
     if not pd.io.common.file_exists(url):
         url = "https://raw.githubusercontent.com/shamshxis/lcds-pubstracker/data/data/lcds_publications.csv"
@@ -50,22 +52,15 @@ def load_data():
         df['Date Available Online'] = pd.to_datetime(df['Date Available Online'], errors='coerce')
         df['Citation Count'] = pd.to_numeric(df['Citation Count'], errors='coerce').fillna(0)
         df['Year'] = pd.to_numeric(df['Year'], errors='coerce').fillna(datetime.now().year)
-        if 'Country' not in df.columns: df['Country'] = "Global"
         return df
     except: return pd.DataFrame()
 
-# --- STYLING FUNCTION ---
+# --- HIGHLIGHT LOGIC ---
 def highlight_conversions(row):
-    """
-    Highlights rows that are RECENT conversions (Preprint -> Journal).
-    Criteria: Contains specific tag AND Year >= Current Year.
-    """
+    """Glows Gold if article converted from Preprint -> Journal recently."""
     current_year = datetime.now().year
-    # Check for the tag added by the scraper
     if "(Journal Publication Now Available)" in str(row['Paper Title']):
-        # Only highlight if it's from this year or the future (upcoming)
         if row['Year'] >= current_year:
-            # Subtle Gold Background (Works in Light & Dark Mode)
             return ['background-color: rgba(255, 215, 0, 0.15)'] * len(row)
     return [''] * len(row)
 
@@ -109,40 +104,27 @@ c1, c2, c3, c4 = st.columns(4)
 c1.metric("Publications", len(df_filtered))
 c2.metric("Total Citations", int(df_filtered['Citation Count'].sum()))
 c3.metric("Preprints", len(df_filtered[df_filtered['Publication Type'] == 'Preprint']))
-c4.metric("Global Reach", df_filtered['Country'].nunique())
+c4.metric("Active Authors", df_filtered['LCDS Author'].nunique())
 
 st.divider()
 
-# Charts
-col1, col2 = st.columns(2)
+# --- MAIN CHART (Full Width) ---
+st.subheader("📈 Citations Trend")
+df_yearly = df_filtered.groupby('Year')['Citation Count'].sum().reset_index()
+if not df_yearly.empty:
+    fig = px.bar(df_yearly, x='Year', y='Citation Count', 
+                 title="Total Citations per Year", 
+                 color_discrete_sequence=['#64B5F6'])
+    fig.update_layout(xaxis_title=None, yaxis_title=None, height=400)
+    st.plotly_chart(fig, use_container_width=True)
+else: st.info("No citation data available for this period.")
 
-with col1:
-    st.subheader("📈 Citations Trend")
-    df_yearly = df_filtered.groupby('Year')['Citation Count'].sum().reset_index()
-    if not df_yearly.empty:
-        fig = px.bar(df_yearly, x='Year', y='Citation Count', 
-                     title="Citations per Year", 
-                     color_discrete_sequence=['#64B5F6'])
-        fig.update_layout(xaxis_title=None, yaxis_title=None)
-        st.plotly_chart(fig, use_container_width=True)
-    else: st.info("No citation data.")
+st.divider()
 
-with col2:
-    st.subheader("🌍 Collaboration Map")
-    if 'Country' in df_filtered.columns:
-        # Parse countries (comma separated)
-        countries = df_filtered['Country'].str.split(', ').explode().value_counts().reset_index()
-        countries.columns = ['Country Code', 'Count']
-        if not countries.empty:
-            fig_map = px.choropleth(countries, locations="Country Code", color="Count",
-                                    hover_name="Country Code", title="Author Affiliations",
-                                    color_continuous_scale="Plasma") # High contrast scale
-            st.plotly_chart(fig_map, use_container_width=True)
-
-# Table
+# --- DATA TABLE ---
 st.subheader("📄 Publications List")
 
-# Apply Styling
+# Apply Gold Glow
 styled_df = df_filtered[['Date Available Online', 'LCDS Author', 'Paper Title', 'Journal Name', 'Citation Count', 'DOI', 'Year']].style.apply(highlight_conversions, axis=1)
 
 st.dataframe(
@@ -159,7 +141,7 @@ st.dataframe(
 # Footer
 st.markdown("""
     <div class="footer">
-        © Certified University of Oxford 2026 - All Rights Reserved. | 
+        © University of Oxford 2026 - All Rights Reserved. | 
         <a href="https://www.demography.ox.ac.uk" target="_blank">demography.ox.ac.uk</a>
     </div>
 """, unsafe_allow_html=True)
