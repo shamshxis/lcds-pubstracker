@@ -4,16 +4,14 @@ import pandas as pd
 import os
 import time
 from datetime import datetime
-from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # --- CONFIGURATION ---
-mailto = os.environ.get('USER_EMAIL', 'research_team@example.com')
-HEADERS = {'User-Agent': f'LCDS-Tracker/11.0 (mailto:{mailto})'}
+HEADERS = {'User-Agent': 'LCDS-Tracker/Production-v2'}
 CSV_FILE = "data/lcds_publications.csv"
 
-# --- 1. STAFF DISCOVERY (Layout-Aware) ---
+# --- 1. STAFF DISCOVERY ---
 def get_staff_list():
-    print(f"[{datetime.now().time()}] 🔍 Scanning LCDS website...")
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] 🔍 Scanning LCDS website...")
     url = "https://www.demography.ox.ac.uk/people"
     names = set()
     
@@ -21,145 +19,146 @@ def get_staff_list():
         res = requests.get(url, headers=HEADERS, timeout=30)
         soup = BeautifulSoup(res.text, 'html.parser')
         
-        # SOURCE 1: Main Grid (Postdocs, Researchers)
-        # In your HTML, these are inside div.views-field-title -> span.field-content
+        # 1. Main Grid
         for div in soup.select("div.views-field-title span.field-content"):
-            text = div.get_text(strip=True)
-            if len(text) > 3: names.add(text)
+            names.add(div.get_text(strip=True))
 
-        # SOURCE 2: Sidebar/Leads (Melinda Mills, etc.)
-        # In your HTML, these are h3.paragraph-side-title
+        # 2. Sidebars (Leads)
         for h3 in soup.select("h3.paragraph-side-title"):
-            text = h3.get_text(strip=True)
-            if len(text) > 3: names.add(text)
+            names.add(h3.get_text(strip=True))
 
-        # CLEANING
-        clean_names = set()
+        # 3. Clean & Filter
+        clean_names = []
         for raw in names:
-            clean = raw.replace('Dr ', '').replace('Prof ', '').replace('Professor ', '').strip()
-            # Remove junk that looks like a name
-            if any(x in clean for x in ["View profile", "Read more", "Contact", "Email"]): continue
-            if len(clean.split()) >= 2 and len(clean) < 40 and not any(char.isdigit() for char in clean):
-                clean_names.add(clean)
+            n = raw.replace('Dr ', '').replace('Prof ', '').replace('Professor ', '').strip()
+            # Basic junk filter
+            if len(n) > 3 and "View profile" not in n and "Read more" not in n:
+                clean_names.append(n)
 
-        # SAFETY NET (Hardcoded overrides for tricky profiles)
+        # 4. HARDCODED INCLUSIONS (Ensure these key people are always checked)
         leads = ["Melinda Mills", "Jennifer Dowd", "Thomas Rawson", "Per Block", "Andrew Stephen", "Ridhu Kashyap", "Wen Su"]
-        for l in leads: clean_names.add(l)
-        
-        final_list = sorted(list(clean_names))
-        print(f"✅ Found {len(final_list)} researchers.")
-        return final_list
-
+        for l in leads:
+            if l not in clean_names: clean_names.append(l)
+            
+        return sorted(list(set(clean_names)))
     except Exception as e:
-        print(f"❌ Scrape error: {e}")
-        return ["Melinda Mills", "Jennifer Dowd", "Andrew Stephen", "Wen Su"]
+        print(f"❌ Scrape Error: {e}")
+        return ["Melinda Mills", "Andrew Stephen", "Wen Su"]
 
-# --- 2. ORCID WITH SMART FILTERING ---
+# --- 2. ORCID WITH "ANDREW STEPHEN" TRAP ---
 def get_orcid(name):
     try:
-        r = requests.get("https://api.openalex.org/authors", params={'search': name}, headers=HEADERS, timeout=10)
+        # Search OpenAlex
+        r = requests.get("https://api.openalex.org/authors", params={'search': name}, headers=HEADERS, timeout=5)
         if r.status_code == 200:
             results = r.json().get('results', [])
             
             for person in results:
-                # Compile all affiliation text
+                # Get all affiliation text
                 affils = " ".join([a.get('institution', {}).get('display_name', '').lower() for a in person.get('affiliations', [])])
                 affils += " " + person.get('last_known_institution', {}).get('display_name', '').lower()
                 
-                # RULE 1: MUST be Oxford
+                # --- TRAP: ANDREW STEPHEN ---
+                if "andrew stephen" in name.lower():
+                    # REJECT the Oncologist
+                    if any(x in affils for x in ["oncology", "genetics", "surgery", "hospital", "medicine", "clinical"]):
+                        continue 
+                    # ACCEPT the Marketer
+                    if any(x in affils for x in ["marketing", "business", "saïd", "management", "retail", "consumer"]):
+                        return person['orcid'].split('/')[-1]
+                    # If neither, skip to be safe
+                    continue
+
+                # --- STANDARD LOGIC FOR OTHERS ---
+                # Must be Oxford
                 if "oxford" not in affils: continue
                 
-                # RULE 2: Andrew Stephen Exception (Business vs Medicine)
-                if "andrew stephen" in name.lower():
-                    if any(x in affils for x in ["marketing", "business", "saïd", "management"]):
-                        return person['orcid'].replace('https://orcid.org/', '')
-                    else:
-                        continue # Skip the oncologist
+                # Must be Relevant Field (Demography, Soc, Econ, etc.)
+                valid_topics = ["demographic", "sociology", "nuffield", "leverhulme", "zoology", "economics", "epidemiology", "public health", "statistics", "social policy"]
                 
-                # RULE 3: General Topic Match
-                # We removed "Engineering" ban for Wen Su, but require Demography connection
-                valid = ["demographic", "sociology", "nuffield", "leverhulme", "zoology", "economics", "epidemiology", "public health", "statistics", "social policy"]
-                
-                if any(v in affils for v in valid):
-                    return person['orcid'].replace('https://orcid.org/', '')
-                
-                # Fallback: If they are at Oxford and have "Population" or "Health" in affiliation
-                if "population" in affils or "global health" in affils:
-                    return person['orcid'].replace('https://orcid.org/', '')
+                # Special Handler for Wen Su (Engineering allowed if Oxford)
+                if "wen su" in name.lower() and "oxford" in affils:
+                     return person['orcid'].split('/')[-1]
 
+                # General Check
+                if any(v in affils for v in valid_topics):
+                    return person['orcid'].split('/')[-1]
+                    
     except: pass
     return None
 
-# --- 3. FETCH WORKS (Instant Enrichment) ---
-def fetch_works(name, orcid):
-    works = []
-    if not orcid: return []
-    try:
-        # Crossref First (Proven Logic)
-        url = f"https://api.crossref.org/works?filter=orcid:{orcid},from-pub-date:2019-09-01&sort=created&order=desc&rows=100"
-        r = requests.get(url, headers=HEADERS, timeout=30)
-        if r.status_code == 200:
-            for item in r.json().get('message', {}).get('items', []):
-                # Date Parsing
-                d = item.get('published-online') or item.get('created') or item.get('published-print')
-                date_str = datetime.now().strftime('%Y-%m-%d')
-                if d and 'date-parts' in d:
-                    p = d['date-parts'][0]
-                    date_str = f"{p[0]:04d}-{p[1]:02d}-{p[2]:02d}" if len(p)==3 else f"{p[0]:04d}-{p[1]:02d}-01"
+# --- 3. FETCH WORKS ---
+def fetch_works(staff):
+    all_data = []
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] 🚀 Processing {len(staff)} researchers...")
+    
+    for name in staff:
+        print(f"   - {name}...", end=" ")
+        orcid = get_orcid(name)
+        
+        if not orcid:
+            print("No Match.")
+            continue
+            
+        print(f"Found ({orcid})")
+        
+        try:
+            # Fetch papers since 2019
+            url = f"https://api.crossref.org/works?filter=orcid:{orcid},from-pub-date:2019-09-01&sort=created&order=desc&rows=60"
+            r = requests.get(url, headers=HEADERS, timeout=10)
+            
+            if r.status_code == 200:
+                items = r.json().get('message', {}).get('items', [])
+                for item in items:
+                    # 1. Date
+                    d = item.get('created', {}).get('date-parts', [[2020,1,1]])[0]
+                    date_str = f"{d[0]}-{d[1]:02d}-01" if len(d)>=2 else f"{d[0]}-01-01"
+                    
+                    # 2. Country Enrichment (Lite)
+                    countries = ""
+                    try:
+                        if 'DOI' in item:
+                            oa_url = f"https://api.openalex.org/works/doi:https://doi.org/{item['DOI']}?select=authorships"
+                            oa_r = requests.get(oa_url, headers=HEADERS, timeout=3)
+                            if oa_r.status_code == 200:
+                                cs = set()
+                                for a in oa_r.json().get('authorships', []):
+                                    for i in a.get('institutions', []):
+                                        if i.get('country_code'): cs.add(i['country_code'])
+                                countries = ",".join(cs)
+                    except: pass
 
-                # Country Enrichment (Row-by-Row to prevent data loss)
-                countries = ""
-                try:
-                    if 'DOI' in item:
-                        doi_url = f"https://api.openalex.org/works/doi:https://doi.org/{item['DOI']}?select=authorships"
-                        oa_r = requests.get(doi_url, headers=HEADERS, timeout=5)
-                        if oa_r.status_code == 200:
-                            c_set = set()
-                            for a in oa_r.json().get('authorships', []):
-                                for i in a.get('institutions', []):
-                                    if i.get('country_code'): c_set.add(i['country_code'])
-                            countries = ",".join(c_set)
-                except: pass
+                    all_data.append({
+                        'Date': date_str,
+                        'Year': d[0],
+                        'LCDS Author': name,
+                        'Title': item.get('title', ['Untitled'])[0],
+                        'Journal': item.get('container-title', [''])[0],
+                        'Type': 'Preprint' if item.get('subtype')=='preprint' else 'Article',
+                        'Citations': item.get('is-referenced-by-count', 0),
+                        'DOI': item.get('DOI'),
+                        'Countries': countries
+                    })
+        except: pass
 
-                works.append({
-                    'Date': date_str,
-                    'Year': date_str.split('-')[0],
-                    'LCDS Author': name,
-                    'Title': item.get('title', ['Untitled'])[0],
-                    'Journal': item.get('container-title', [''])[0] if item.get('container-title') else "Preprint",
-                    'Type': "Preprint" if item.get('subtype')=='preprint' else "Article",
-                    'Citations': item.get('is-referenced-by-count', 0),
-                    'DOI': f"https://doi.org/{item.get('DOI')}",
-                    'Countries': countries
-                })
-    except: pass
-    return works
+    return all_data
 
 # --- MAIN ---
 if __name__ == "__main__":
     os.makedirs("data", exist_ok=True)
     
-    # Initialize CSV
-    if not os.path.exists(CSV_FILE):
-        pd.DataFrame(columns=['Date','Year','LCDS Author','Title','Journal','Type','Citations','DOI','Countries']).to_csv(CSV_FILE, index=False)
-
+    # 1. Get List
     staff = get_staff_list()
-    print(f"[{datetime.now().time()}] 🚀 Starting fetch for {len(staff)} researchers...")
     
-    # Process Row-by-Row (Fail-Safe)
-    for person in staff:
-        print(f"   Processing {person}...")
-        orcid = get_orcid(person)
-        if orcid:
-            data = fetch_works(person, orcid)
-            if data:
-                df_new = pd.DataFrame(data)
-                df_new.to_csv(CSV_FILE, mode='a', header=False, index=False)
+    # 2. Fetch Data
+    data = fetch_works(staff)
     
-    # Final Deduplication
-    try:
-        df = pd.read_csv(CSV_FILE)
+    # 3. Save (Single Write to prevent Corruption)
+    if data:
+        df = pd.DataFrame(data)
+        # Deduplicate by DOI
         df = df.drop_duplicates(subset=['DOI'])
         df.to_csv(CSV_FILE, index=False)
-        print("✅ Done.")
-    except: pass
+        print(f"✅ Success! Saved {len(df)} publications to {CSV_FILE}")
+    else:
+        print("⚠️ No data found.")
