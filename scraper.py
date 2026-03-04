@@ -8,31 +8,66 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # --- CONFIGURATION ---
 mailto = os.environ.get('USER_EMAIL', 'research_team@example.com')
-HEADERS = {'User-Agent': f'LCDS-Impact-Tracker/2.0 (mailto:{mailto})'}
+HEADERS = {'User-Agent': f'LCDS-Impact-Tracker/3.0 (mailto:{mailto})'}
 
-# --- 1. DISCOVERY ---
+# --- 1. STAFF DISCOVERY (Prioritizing YOUR Tag) ---
 def get_staff_list():
-    """Scrapes LCDS website for staff names."""
+    """
+    Scrapes LCDS website using the specific h3 tag that works.
+    """
     print(f"[{datetime.now().time()}] 🔍 Scanning LCDS website...")
     url = "https://www.demography.ox.ac.uk/people"
     names = set()
+    
     try:
         res = requests.get(url, headers=HEADERS, timeout=30)
         soup = BeautifulSoup(res.text, 'html.parser')
-        selectors = ['h3.paragraph-side-title', '.views-field-title a', '.person-name', 'h3.node__title']
-        for s in selectors:
-            for el in soup.select(s):
-                clean = el.get_text(strip=True).replace('Dr ', '').replace('Prof ', '').strip()
-                if any(x in clean for x in ["View profile", "Read more", "Contact"]): continue
-                if len(clean.split()) >= 2 and len(clean) < 40:
-                    names.add(clean)
-        names.add("Melinda Mills") # Ensure key lead is there
-        return sorted(list(names))
-    except: return ["Melinda Mills", "Ursula Gazeley"]
+        
+        # --- PRIORITY 1: The Tag You Identified ---
+        # This is the exact class used for names in the grid layout
+        for el in soup.select('h3.paragraph-side-title'):
+            raw_name = el.get_text(strip=True)
+            if raw_name:
+                names.add(raw_name)
 
-# --- 2. ORCID ---
+        # --- PRIORITY 2: Backup Selectors (Just in case) ---
+        # Some profiles might be in a different list view
+        other_selectors = ['.views-field-title a', '.person-name', 'h3.node__title']
+        for s in other_selectors:
+            for el in soup.select(s):
+                names.add(el.get_text(strip=True))
+
+        # --- CLEANING ---
+        clean_names = set()
+        for raw in names:
+            # Standardize
+            clean = raw.replace('Dr ', '').replace('Prof ', '').replace('Professor ', '').strip()
+            
+            # Remove Junk that sometimes sneaks into h3 tags
+            junk_terms = ["View profile", "Read more", "Contact", "Email", "Research", "Team", "Profile"]
+            if any(x.lower() in clean.lower() for x in junk_terms): continue
+            
+            # Validate (Must look like a name: "First Last")
+            parts = clean.split()
+            if len(parts) >= 2 and len(clean) < 40 and not any(char.isdigit() for char in clean):
+                clean_names.add(clean)
+
+        # SAFETY NET: Key Leads
+        clean_names.add("Melinda Mills")
+        clean_names.add("Jennifer Dowd")
+        
+        final_list = sorted(list(clean_names))
+        print(f"✅ Found {len(final_list)} researchers.")
+        return final_list
+
+    except Exception as e:
+        print(f"❌ Staff scrape error: {e}")
+        return ["Melinda Mills", "Jennifer Dowd"]
+
+# --- 2. ORCID (Unchanged) ---
 def get_orcid(name):
     try:
+        # Search OpenAlex for name
         r = requests.get("https://api.openalex.org/authors", params={'search': name}, headers=HEADERS, timeout=10)
         if r.status_code == 200:
             results = r.json().get('results', [])
@@ -40,7 +75,7 @@ def get_orcid(name):
     except: pass
     return None
 
-# --- 3. FETCH (Your Logic) ---
+# --- 3. FETCH (Your Proven Logic) ---
 def standardize_date(date_parts):
     try:
         if not date_parts: return None
@@ -54,15 +89,15 @@ def fetch_works(name, orcid):
     works = []
     if not orcid: return []
     try:
+        # Crossref First + Created Date Priority + 2019 Start
         url = f"https://api.crossref.org/works?filter=orcid:{orcid},from-pub-date:2019-09-01&sort=created&order=desc&rows=100"
         r = requests.get(url, headers=HEADERS, timeout=30)
         if r.status_code == 200:
             items = r.json().get('message', {}).get('items', [])
             for item in items:
-                # Preprint detection
                 is_pp = item.get('subtype') == 'preprint' or item.get('type') == 'posted-content'
                 
-                # Date logic
+                # The Critical "Created Date" Logic
                 d_obj = item.get('published-online') or item.get('created') or item.get('published-print')
                 final_date = datetime.now().strftime('%Y-%m-%d')
                 if d_obj and 'date-parts' in d_obj:
@@ -79,8 +114,8 @@ def fetch_works(name, orcid):
                     'Type': "Preprint" if is_pp else "Journal Article",
                     'Citations': item.get('is-referenced-by-count', 0),
                     'DOI': f"https://doi.org/{item.get('DOI')}",
-                    'Field': 'Pending', # Placeholder
-                    'Countries': ''     # Placeholder
+                    'Field': 'Pending',
+                    'Countries': ''
                 })
     except: pass
     return works
@@ -93,7 +128,6 @@ def safe_enrich(df):
         dois = df['DOI'].str.replace('https://doi.org/', '').tolist()
         doi_map = {}
         
-        # Chunk requests
         def chunker(seq, size): return (seq[pos:pos + size] for pos in range(0, len(seq), size))
         
         for chunk in chunker(dois, 40):
@@ -105,11 +139,9 @@ def safe_enrich(df):
                     for res in r.json().get('results', []):
                         d = res.get('doi', '').replace('https://doi.org/', '').lower()
                         
-                        # Topic
                         topic = "Multidisciplinary"
                         if res.get('primary_topic'): topic = res['primary_topic']['field']['display_name']
                         
-                        # Countries
                         cntry = set()
                         for a in res.get('authorships', []):
                             for i in a.get('institutions', []):
@@ -118,7 +150,6 @@ def safe_enrich(df):
                         doi_map[d] = {'Field': topic, 'Countries': ",".join(cntry)}
             except: pass
             
-        # Apply map
         for index, row in df.iterrows():
             d_key = row['DOI'].replace('https://doi.org/', '').lower()
             if d_key in doi_map:
@@ -127,7 +158,6 @@ def safe_enrich(df):
                 
     except Exception as e:
         print(f"Enrichment warning: {e}")
-        
     return df
 
 # --- MAIN ---
@@ -136,6 +166,7 @@ if __name__ == "__main__":
     staff = get_staff_list()
     
     all_data = []
+    # 5 workers is safe for rate limits
     with ThreadPoolExecutor(max_workers=5) as exc:
         futures = {exc.submit(fetch_works, n, get_orcid(n)): n for n in staff}
         for f in as_completed(futures):
@@ -146,13 +177,12 @@ if __name__ == "__main__":
         df = pd.DataFrame(all_data)
         df = df.sort_values('Date', ascending=False).drop_duplicates('DOI')
         
-        # Save RAW data first (Safety)
+        # Save RAW data first
         df.to_csv("data/lcds_publications.csv", index=False)
         
-        # Try to Enrich
+        # Enrich and Save Again
         df = safe_enrich(df)
         df.to_csv("data/lcds_publications.csv", index=False)
         print(f"✅ SUCCESS: Saved {len(df)} records.")
     else:
-        # Create empty CSV so App doesn't crash
         pd.DataFrame(columns=['Date','Year','LCDS Author','Title','Journal','Type','Citations','DOI','Field','Countries']).to_csv("data/lcds_publications.csv", index=False)
