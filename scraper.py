@@ -8,9 +8,9 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # --- CONFIGURATION ---
 mailto = os.environ.get('USER_EMAIL', 'research_team@example.com')
-HEADERS = {'User-Agent': f'LCDS-Tracker/8.0 (mailto:{mailto})'}
+HEADERS = {'User-Agent': f'LCDS-Tracker/9.0 (mailto:{mailto})'}
 
-# --- 1. STAFF DISCOVERY (Targeting your HTML file structure) ---
+# --- 1. STAFF DISCOVERY ---
 def get_staff_list():
     print(f"[{datetime.now().time()}] 🔍 Scanning LCDS website...")
     url = "https://www.demography.ox.ac.uk/people"
@@ -20,31 +20,24 @@ def get_staff_list():
         res = requests.get(url, headers=HEADERS, timeout=30)
         soup = BeautifulSoup(res.text, 'html.parser')
         
-        # PRIMARY SELECTOR: Based on the Drupal View in your uploaded HTML
-        # Look for the 'views-field-title' inside the people grid
+        # Selectors matching your HTML structure
         for div in soup.find_all("div", class_="views-field-title"):
             text = div.get_text(strip=True)
             if text: names.add(text)
 
-        # SECONDARY SELECTOR: Side titles (Melinda often appears here)
         for h3 in soup.select("h3.paragraph-side-title"):
             names.add(h3.get_text(strip=True))
 
-        # CLEANING & VALIDATION
         clean_names = set()
         for raw in names:
-            # Remove titles
             clean = raw.replace('Dr ', '').replace('Prof ', '').replace('Professor ', '').strip()
-            
-            # Junk Filter
-            junk = ["View profile", "Read more", "Contact", "Email", "Research", "Team", "Profile", "News"]
+            junk = ["View profile", "Read more", "Contact", "Email", "Research", "Team", "Profile"]
             if any(x.lower() in clean.lower() for x in junk): continue
             
-            # Must look like a name
             if len(clean.split()) >= 2 and len(clean) < 40 and not any(char.isdigit() for char in clean):
                 clean_names.add(clean)
 
-        # HARDCODED SAFETY NET (For complex profiles)
+        # Safety Net
         leads = ["Melinda Mills", "Jennifer Dowd", "Thomas Rawson", "Per Block", "Andrew Stephen", "Ridhu Kashyap"]
         for l in leads: clean_names.add(l)
         
@@ -56,58 +49,41 @@ def get_staff_list():
         print(f"❌ Scrape error: {e}")
         return ["Melinda Mills", "Jennifer Dowd", "Andrew Stephen"]
 
-# --- 2. ORCID WITH "TOPIC FIREWALL" ---
+# --- 2. ORCID WITH FIREWALL ---
 def get_orcid(name):
-    """
-    STRICT FILTER:
-    - Must be Oxford Affiliated.
-    - Must match Research Keywords (Demography, Sociology, Marketing, Zoology).
-    - Must NOT match pure Clinical/Engineering keywords (Cancer, Surgery).
-    """
     try:
         r = requests.get("https://api.openalex.org/authors", params={'search': name}, headers=HEADERS, timeout=10)
         if r.status_code == 200:
             results = r.json().get('results', [])
             
             for person in results:
-                # Build affiliation text
                 affils = [a.get('institution', {}).get('display_name', '').lower() for a in person.get('affiliations', [])]
                 last_known = person.get('last_known_institution', {}).get('display_name', '').lower()
                 affils.append(last_known)
                 full_text = " ".join(affils)
                 
-                # RULE 1: OXFORD CONNECTION
+                # Rule 1: Oxford
                 if "oxford" not in full_text: continue
                 
-                # RULE 2: TOPIC WHITELIST (Includes Marketing for Andrew Stephen)
-                valid_keywords = [
-                    "demographic", "sociology", "nuffield", "leverhulme", 
-                    "population", "social policy", "zoology", "economics", 
-                    "epidemiology", "public health", "statistics",
-                    "marketing", "business", "consumer", "saïd", "management"
-                ]
-                if not any(k in full_text for k in valid_keywords): continue
+                # Rule 2: Topics (Includes Marketing for Andrew Stephen)
+                valid = ["demographic", "sociology", "nuffield", "leverhulme", "zoology", "economics", 
+                         "epidemiology", "public health", "statistics", "marketing", "business", "saïd"]
+                if not any(k in full_text for k in valid): continue
                 
-                # RULE 3: BAN LIST (Admins, Engineers, Pure Clinical)
-                # Blocks "Wen Su" (Engineer) and "Louise Allcock" (Admin)
-                ban_keywords = [
-                    "administrator", "coordinator", "finance", 
-                    "civil engineering", "materials science", 
-                    "oncology", "surgery", "cancer research", "clinical medicine"
-                ]
+                # Rule 3: Ban List (Blocks wrong Andrew Stephen & Admins)
+                ban = ["civil engineering", "materials science", "oncology", "surgery", "cancer", "administrator", "finance"]
                 
-                # Exception: If "Demography" or "Marketing" is present, ignore the ban
-                is_banned = any(b in full_text for b in ban_keywords)
+                is_banned = any(b in full_text for b in ban)
+                # Override ban if they have "demographic" or "marketing"
                 has_override = any(x in full_text for x in ["demographic", "marketing", "saïd"])
                 
                 if is_banned and not has_override: continue 
                 
                 return person['orcid'].replace('https://orcid.org/', '')
     except: pass
-    print(f"   ❌ Skipping {name} (No valid Researcher ORCID found)")
     return None
 
-# --- 3. FETCH WORKS (Unchanged) ---
+# --- 3. FETCH WORKS ---
 def standardize_date(date_parts):
     try:
         if not date_parts: return None
@@ -121,7 +97,7 @@ def fetch_works(name, orcid):
     works = []
     if not orcid: return []
     try:
-        # Crossref First + Created Date Priority
+        # Crossref First (Proven Recent Logic)
         url = f"https://api.crossref.org/works?filter=orcid:{orcid},from-pub-date:2019-09-01&sort=created&order=desc&rows=100"
         r = requests.get(url, headers=HEADERS, timeout=30)
         if r.status_code == 200:
@@ -145,16 +121,15 @@ def fetch_works(name, orcid):
                     'Type': "Preprint" if is_pp else "Journal Article",
                     'Citations': item.get('is-referenced-by-count', 0),
                     'DOI': f"https://doi.org/{item.get('DOI')}",
-                    'Field': 'Pending',
-                    'Countries': ''
+                    'Countries': '' # Initialize empty
                 })
     except: pass
     return works
 
-# --- 4. ENRICH (Map Data) ---
+# --- 4. ENRICH (Get Countries) ---
 def safe_enrich(df):
     if df.empty: return df
-    print(f"[{datetime.now().time()}] 🧠 Enriching data...")
+    print(f"[{datetime.now().time()}] 🧠 Enriching country data...")
     try:
         dois = df['DOI'].str.replace('https://doi.org/', '').tolist()
         doi_map = {}
@@ -164,29 +139,27 @@ def safe_enrich(df):
         for chunk in chunker(dois, 40):
             try:
                 f = "|".join([f"doi:https://doi.org/{d}" for d in chunk])
-                url = f"https://api.openalex.org/works?filter={f}&per-page=50&select=doi,primary_topic,authorships"
+                # Explicitly ask for 'authorships' which contains countries
+                url = f"https://api.openalex.org/works?filter={f}&per-page=50&select=doi,authorships"
                 r = requests.get(url, headers=HEADERS, timeout=15)
                 if r.status_code == 200:
                     for res in r.json().get('results', []):
                         d = res.get('doi', '').replace('https://doi.org/', '').lower()
-                        
-                        topic = "Multidisciplinary"
-                        if res.get('primary_topic'): topic = res['primary_topic']['field']['display_name']
                         
                         cntry = set()
                         for a in res.get('authorships', []):
                             for i in a.get('institutions', []):
                                 if i.get('country_code'): cntry.add(i['country_code'])
                         
-                        doi_map[d] = {'Field': topic, 'Countries': ",".join(cntry)}
+                        doi_map[d] = ",".join(cntry)
             except: pass
             
         for index, row in df.iterrows():
             d_key = row['DOI'].replace('https://doi.org/', '').lower()
             if d_key in doi_map:
-                df.at[index, 'Field'] = doi_map[d_key]['Field']
-                df.at[index, 'Countries'] = doi_map[d_key]['Countries']
-    except: pass
+                df.at[index, 'Countries'] = doi_map[d_key]
+    except Exception as e: 
+        print(f"Enrichment error: {e}")
     return df
 
 # --- MAIN ---
@@ -204,9 +177,14 @@ if __name__ == "__main__":
     if all_data:
         df = pd.DataFrame(all_data)
         df = df.sort_values('Date', ascending=False).drop_duplicates('DOI')
+        
+        # 1. Save Basic Data (Safety)
         df.to_csv("data/lcds_publications.csv", index=False)
+        
+        # 2. Enrich with Countries & Save Again
         df = safe_enrich(df)
         df.to_csv("data/lcds_publications.csv", index=False)
         print(f"✅ SUCCESS: Saved {len(df)} records.")
     else:
-        pd.DataFrame(columns=['Date','Year','LCDS Author','Title','Journal','Type','Citations','DOI','Field','Countries']).to_csv("data/lcds_publications.csv", index=False)
+        # Save Empty Structure
+        pd.DataFrame(columns=['Date','Year','LCDS Author','Title','Journal','Type','Citations','DOI','Countries']).to_csv("data/lcds_publications.csv", index=False)
