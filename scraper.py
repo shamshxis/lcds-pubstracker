@@ -24,8 +24,8 @@ def get_staff_names():
         for s in selectors:
             for el in soup.select(s):
                 clean = el.get_text(strip=True).replace('Dr ', '').replace('Prof ', '').strip()
-                # Filter out junk
-                if any(x in clean for x in ["View profile", "Read more", "Contact"]): continue
+                # Filter out junk navigation text
+                if any(x in clean for x in ["View profile", "Read more", "Contact", "Email", "Research"]): continue
                 
                 if len(clean.split()) >= 2 and len(clean) < 50:
                     names.add(clean)
@@ -38,31 +38,22 @@ def get_staff_names():
 # --- 2. ORCID AFFILIATION MATCHING (The "Strict Filter") ---
 def get_verified_orcid(name):
     """
-    1. Search OpenAlex for the name.
-    2. Check the ORCID record's 'affiliations' list.
-    3. Return ORCID ONLY if they match Oxford/LCDS keywords.
+    Strictly verifies that the author belongs to LCDS/Oxford via their ORCID history.
     """
     try:
-        # Search for author
         r = requests.get("https://api.openalex.org/authors", params={'search': name}, headers=HEADERS, timeout=10)
         if r.status_code == 200:
-            results = r.json().get('results', [])
-            
-            for result in results:
+            for result in r.json().get('results', []):
                 if 'orcid' not in result: continue
                 
-                # DEEP DIVE: Check all historical affiliations, not just current
+                # Check ALL historical affiliations
                 affiliations = [a.get('institution', {}).get('display_name', '').lower() for a in result.get('affiliations', [])]
                 last_known = result.get('last_known_institution', {}).get('display_name', '').lower()
+                all_text = " ".join(affiliations + [last_known])
                 
-                # Combine all institution text associated with this ORCID
-                history_text = " ".join(affiliations + [last_known])
-                
-                # The "Green List" of keywords
+                # Keywords for valid affiliation
                 keywords = ['oxford', 'leverhulme', 'demographic', 'nuffield', 'sociology', 'population', 'lcds']
-                
-                # If ANY keyword appears in their ORCID history, they are valid.
-                if any(k in history_text for k in keywords):
+                if any(k in all_text for k in keywords):
                     return result['orcid'].replace('https://orcid.org/', '')
     except: pass
     return None
@@ -187,6 +178,5 @@ if __name__ == "__main__":
         print(f"SUCCESS: Saved {len(df)} verified records.")
     else:
         print("WARNING: No records found.")
-        # Create empty CSV with correct headers
         pd.DataFrame(columns=['Date Available Online', 'LCDS Author', 'Paper Title', 'Journal Name', 
                 'Journal Area', 'Publication Type', 'Citation Count', 'DOI', 'Year']).to_csv("data/lcds_publications.csv", index=False)
