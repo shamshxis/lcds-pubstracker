@@ -11,49 +11,59 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# --- CUSTOM OXFORD BRANDING CSS ---
+# --- TRENDY & DARK-MODE FRIENDLY CSS ---
 st.markdown("""
     <style>
-        /* Oxford Blue Headers */
+        /* 1. Dynamic Headers (Auto-adapts to Dark/Light Mode) */
         h1, h2, h3 {
-            color: #002147 !important;
-            font-family: 'Georgia', serif;
+            font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+            font-weight: 700;
+            letter-spacing: -0.5px;
         }
         
-        /* Subheading Styling */
-        .sub-header {
-            font-size: 1.2rem;
-            color: #555;
-            margin-top: -15px;
-            margin-bottom: 25px;
-            font-style: italic;
+        /* 2. Trendy Gradient Subheading */
+        .trendy-sub {
+            background: linear-gradient(90deg, #002147 0%, #C49102 100%); /* Oxford Blue -> Gold */
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            font-size: 1.5rem;
+            font-weight: 600;
+            margin-top: -10px;
+            margin-bottom: 30px;
         }
 
-        /* Footer Styling */
+        /* Dark Mode Adjustment for Subheading */
+        @media (prefers-color-scheme: dark) {
+            .trendy-sub {
+                background: linear-gradient(90deg, #81D4FA 0%, #FFD700 100%); /* Light Blue -> Gold */
+                -webkit-background-clip: text;
+                -webkit-text-fill-color: transparent;
+            }
+        }
+
+        /* 3. Footer Styling */
         .footer {
             position: fixed;
             left: 0;
             bottom: 0;
             width: 100%;
-            background-color: #002147;
+            background-color: #002147; /* Always Oxford Blue background */
             color: white;
             text-align: center;
-            padding: 10px;
-            font-size: 0.9rem;
-            z-index: 1000;
+            padding: 12px;
+            font-size: 0.85rem;
+            z-index: 999;
+            box-shadow: 0 -2px 10px rgba(0,0,0,0.2);
         }
         .footer a {
-            color: #FFD700; /* Gold color for links */
+            color: #FFD700; /* Gold links */
             text-decoration: none;
             font-weight: bold;
         }
-        .footer a:hover {
-            text-decoration: underline;
-        }
         
-        /* Adjust main content padding so footer doesn't hide it */
+        /* Padding to prevent content being hidden behind footer */
         .block-container {
-            padding-bottom: 70px;
+            padding-bottom: 80px;
         }
     </style>
 """, unsafe_allow_html=True)
@@ -62,7 +72,7 @@ st.markdown("""
 @st.cache_data(ttl=3600)
 def load_data():
     # URL to your raw CSV on the data branch
-    # REPLACE 'shamshxis' and 'lcds-pubstracker' if they change!
+    # REPLACE 'shamshxis' and 'lcds-pubstracker' if needed!
     url = "https://raw.githubusercontent.com/shamshxis/lcds-pubstracker/data/data/lcds_publications.csv"
     
     try:
@@ -75,7 +85,7 @@ def load_data():
             'Year of Publication', 'Citation Count', 'Publication Type'
         ]
         
-        # 2. FORCE columns to exist (fill missing with defaults)
+        # 2. FORCE columns to exist
         for col in expected_cols:
             if col not in df.columns:
                 df[col] = "Unknown" if col != 'Citation Count' else 0
@@ -121,9 +131,9 @@ df_filtered = df[mask].copy()
 
 # --- MAIN DASHBOARD ---
 
-# 1. HEADER & BRANDING
+# 1. HEADER
 st.title("Leverhulme Centre for Demographic Science")
-st.markdown('<p class="sub-header">Measuring our impact across the years.</p>', unsafe_allow_html=True)
+st.markdown('<div class="trendy-sub">Measuring our impact across the years.</div>', unsafe_allow_html=True)
 
 st.markdown(f"**Viewing:** {time_filter} | **Records Found:** {len(df_filtered)}")
 st.divider()
@@ -177,7 +187,7 @@ st.dataframe(
 # 5. FOOTER
 st.markdown("""
     <div class="footer">
-        © University of Oxford 2026 - All Rights Reserved. | 
-        <a href="https://www.demography.ox.ac.uk" target="_blank">Visit our Website</a>
+        Certified University of Oxford 2026 - All Rights Reserved. | 
+        <a href="https://www.demography.ox.ac.uk" target="_blank">demography.ox.ac.uk</a>
     </div>
 """, unsafe_allow_html=True)
