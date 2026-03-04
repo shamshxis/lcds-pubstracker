@@ -33,6 +33,13 @@ jobs:
         run: |
           git config --global user.name "GitHub Action"
           git config --global user.email "action@github.com"
+          
+          # Stage and commit
           git add data/lcds_publications.csv
           git commit -m "Auto-update: New publications data" || echo "No changes to commit"
+          
+          # 🛑 THE FIX: Pull latest changes before pushing to prevent errors
+          git pull --rebase origin main
+          
+          # Push changes
           git push
