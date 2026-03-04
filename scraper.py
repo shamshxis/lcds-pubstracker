@@ -4,6 +4,7 @@ import pandas as pd
 import os
 import time
 from datetime import datetime
+import re
 
 # --- CONFIGURATION ---
 mailto = os.environ.get('USER_EMAIL', 'research_tracker@ox.ac.uk')
@@ -13,46 +14,79 @@ START_DATE = "2019-09-01"
 
 # --- 1. STAFF DISCOVERY & ADMIN FILTERING ---
 def get_staff_list():
-    print(f"[{datetime.now().time()}] 🔍 Scanning LCDS website...")
+    print(f"[{datetime.now().time()}] 🔍 Scanning LCDS website.")
     url = "https://www.demography.ox.ac.uk/people"
     names = set()
-    
+
     # Explicit exclusions (Admin / Non-research)
-    blocklist =["hamza shams", "louise allcock", "admin", "administrator"]
-    
+    blocklist = ["hamza shams", "louise allcock", "admin", "administrator"]
+
     # Core researchers to guarantee inclusion
-    leads =["Melinda Mills", "Jennifer Dowd", "Thomas Rawson", "Per Block", "Andrew Stephen", "Ridhu Kashyap", "Charles Rahal"]
-    for l in leads: names.add(l)
-    
+    leads = ["Melinda Mills", "Jennifer Dowd", "Thomas Rawson", "Per Block", "Andrew Stephen", "Ridhu Kashyap", "Charles Rahal"]
+    for l in leads:
+        names.add(l)
+
+    admin_keywords = [
+        "admin", "administrator", "manager", "coordinator", "officer", "assistant",
+        "communications", "support", "hr", "finance", "alumni"
+    ]
+
+    def _is_current_member(position_text: str) -> bool:
+        if not position_text:
+            return True
+        t = position_text.strip().lower()
+
+        # Exclude obvious former-member patterns visible on the People page
+        if "previously" in t:
+            return False
+        if re.search(r"\b(19|20)\d{2}\s*[-–]\s*(19|20)\d{2}\b", t):
+            return False
+        if "lcds postdoc" in t or "lcds dphil" in t:
+            # Many former members are listed with a current external role plus prior LCDS role
+            if "previously" in t or "(" in t:
+                return False
+
+        return True
+
     try:
         res = requests.get(url, headers=HEADERS, timeout=30)
-        soup = BeautifulSoup(res.text, 'html.parser')
-        
-        # Admin job titles to filter out at the card level
-        admin_keywords =["admin ", "administrator", "manager", "coordinator", "officer", "assistant", "communications", "support", "hr ", "finance", "alumni", "centre co-director"]
-        
-        # Scan Drupal 'views-row' cards
-        for card in soup.select('.views-row'):
+        res.raise_for_status()
+        soup = BeautifulSoup(res.text, "html.parser")
+
+        for card in soup.select(".views-row"):
             card_text = card.get_text(separator=" ", strip=True).lower()
-            
-            # Skip if card contains admin job titles
-            if any(keyword in card_text for keyword in admin_keywords):
+
+            # Skip admin/support cards
+            if any(k in card_text for k in admin_keywords):
                 continue
-                
-            # Extract name
-            name_tag = card.select('div.views-field-title span.field-content')
-            if name_tag:
-                raw_name = name_tag[0].get_text(strip=True)
-                clean = raw_name.replace('Dr ', '').replace('Prof ', '').replace('Professor ', '').strip()
-                clean_lower = clean.lower()
-                
-                # Check against explicit blocklist and sanity checks
-                if not any(b in clean_lower for b in blocklist):
-                    if len(clean.split()) >= 2 and len(clean) < 40 and "view profile" not in clean_lower:
-                        names.add(clean)
-        
+
+            # Name selector based on the current card markup in the People page HTML
+            name_el = card.select_one("h3.paragraph-side-title")
+            if not name_el:
+                # Fallback to older selector if Drupal theme changes again
+                name_el = card.select_one("div.views-field-title span.field-content")
+            if not name_el:
+                continue
+
+            raw_name = name_el.get_text(strip=True)
+            clean = raw_name.replace("Dr ", "").replace("Prof ", "").replace("Professor ", "").strip()
+            clean_lower = clean.lower()
+
+            if any(b in clean_lower for b in blocklist):
+                continue
+            if len(clean.split()) < 2 or len(clean) > 40:
+                continue
+
+            # Pull position text to drop former members reliably
+            pos_el = card.select_one(".field--name-field-position")
+            position_text = pos_el.get_text(" ", strip=True) if pos_el else ""
+            if not _is_current_member(position_text):
+                continue
+
+            names.add(clean)
+
         final_list = sorted(list(names))
-        print(f"✅ Found {len(final_list)} researchers (Admin/Support staff excluded).")
+        print(f"✅ Found {len(final_list)} current people (Admin/Support staff excluded).")
         return final_list
 
     except Exception as e:
@@ -61,9 +95,137 @@ def get_staff_list():
 
 # --- 2. STRICT ORCID FILTER ---
 def get_orcid(name):
+    """Find best-matching ORCID for a person name.
+
+    Priority:
+      1) Crossref works search (extract ORCID from author blocks)
+      2) OpenAlex author search as a fallback
+
+    OpenAlex is used only to validate Oxford/LCDS affiliation and to fill gaps.
+    """
+    def _split_name(full_name: str):
+        parts = [p for p in re.split(r"\s+", full_name.strip()) if p]
+        if len(parts) < 2:
+            return ("", "")
+        family = parts[-1]
+        given = " ".join(parts[:-1])
+        return (given, family)
+
+    def _author_name_matches(author_obj: dict, target_name: str) -> bool:
+        given_t, family_t = _split_name(target_name)
+        given_a = (author_obj.get("given") or "").strip()
+        family_a = (author_obj.get("family") or "").strip()
+        if not family_a or not family_t:
+            return False
+
+        # Family name: allow multi-word family names in Crossref (match end token)
+        if family_t.lower() != family_a.split()[-1].lower():
+            return False
+
+        # Given name: at least initial should match when present
+        if given_t and given_a:
+            if given_t[0].lower() != given_a[0].lower():
+                return False
+
+        return True
+
+    def _validate_orcid_via_openalex(orcid: str):
+        """Return (score, oxford_flag, lcds_flag). Higher score is better."""
+        try:
+            url = f"https://api.openalex.org/authors/orcid:{orcid}"
+            r = requests.get(url, headers=HEADERS, timeout=15)
+            if r.status_code != 200:
+                return (0, False, False)
+
+            j = r.json()
+            inst_names = []
+            for a in (j.get("affiliations") or []):
+                dname = ((a.get("institution") or {}).get("display_name") or "").lower()
+                if dname:
+                    inst_names.append(dname)
+
+            lki = ((j.get("last_known_institution") or {}).get("display_name") or "").lower()
+            if lki:
+                inst_names.append(lki)
+
+            affils = " ".join(inst_names)
+            oxford = "oxford" in affils
+            lcds = ("leverhulme" in affils) or ("demographic science" in affils) or ("lcds" in affils)
+
+            # Soft support for broader Oxford demography ecosystem
+            demo_related = any(k in affils for k in ["demograph", "population", "nuffield", "public health", "sociolog", "health", "fertilit", "comput", "data science"])
+
+            score = 0
+            if oxford:
+                score += 2
+            if lcds:
+                score += 3
+            if demo_related:
+                score += 1
+
+            return (score, oxford, lcds)
+        except Exception:
+            return (0, False, False)
+
+    # Phase 1: Crossref-first extraction of ORCIDs from works metadata
     try:
-        r = requests.get("https://api.openalex.org/authors", params={'search': name}, headers=HEADERS, timeout=10)
-        if r.status_code != 200: return None
+        params = {
+            "query.author": name,
+            "rows": 100,
+            "sort": "relevance",
+            "order": "desc",
+            "select": "DOI,title,author,created"
+        }
+        cr_r = requests.get("https://api.crossref.org/works", params=params, headers=HEADERS, timeout=30)
+        if cr_r.status_code == 200:
+            candidates = []
+            items = (cr_r.json().get("message") or {}).get("items") or []
+            for item in items:
+                for a in (item.get("author") or []):
+                    orcid_url = a.get("ORCID")
+                    if not orcid_url:
+                        continue
+                    if not _author_name_matches(a, name):
+                        continue
+                    orcid = str(orcid_url).replace("https://orcid.org/", "").replace("http://orcid.org/", "").strip()
+                    if not orcid:
+                        continue
+
+                    score, oxford, lcds = _validate_orcid_via_openalex(orcid)
+                    # Require at least Oxford or LCDS signal to avoid homonyms
+                    if score >= 2:
+                        candidates.append((score, orcid))
+
+            if candidates:
+                candidates.sort(reverse=True)
+                return candidates[0][1]
+    except Exception as e:
+        print(f"      [!] Crossref ORCID discovery failed for {name}: {e}")
+
+    # Phase 2: OpenAlex fallback search for ORCID (gap filler)
+    try:
+        r = requests.get("https://api.openalex.org/authors", params={"search": name, "per-page": 25}, headers=HEADERS, timeout=15)
+        if r.status_code != 200:
+            return None
+
+        best = (0, None)
+        for person in r.json().get("results", []):
+            orcid_val = person.get("orcid")
+            if not orcid_val:
+                continue
+            orcid = str(orcid_val).replace("https://orcid.org/", "").strip()
+            if not orcid:
+                continue
+
+            score, _, _ = _validate_orcid_via_openalex(orcid)
+            if score > best[0]:
+                best = (score, orcid)
+
+        return best[1]
+    except Exception as e:
+        print(f"      [!] OpenAlex ORCID fallback error for {name}: {e}")
+
+    return None
             
         results = r.json().get('results',[])
         for person in results:
