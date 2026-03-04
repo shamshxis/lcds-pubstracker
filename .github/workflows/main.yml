@@ -3,37 +3,30 @@ name: LCDS Scraper
 on:
   schedule:
     - cron: '0 */12 * * *' # Every 12 hours
-  workflow_dispatch: # Allows manual run
+  workflow_dispatch:
 
 jobs:
-  scrape-and-update:
+  update-data:
     runs-on: ubuntu-latest
     permissions:
       contents: write
       
     steps:
-    - name: Checkout Code
-      uses: actions/checkout@v3
-
-    - name: Set up Python
-      uses: actions/setup-python@v4
+    - uses: actions/checkout@v3
+    
+    - uses: actions/setup-python@v4
       with:
         python-version: '3.9'
-
-    - name: Install Dependencies
-      run: |
-        pip install requests beautifulsoup4 pandas lxml
-
+        
+    - run: pip install requests pandas beautifulsoup4 plotly streamlit lxml
+    
     - name: Run Scraper
-      env:
-        USER_EMAIL: ${{ secrets.USER_EMAIL }} # Add this to GitHub Secrets if you have one, or hardcode in scraper
+      run: python scraper.py
+      
+    - name: Commit
       run: |
-        python scraper.py
-
-    - name: Commit and Push
-      run: |
-        git config --global user.name "GitHub Action"
-        git config --global user.email "action@github.com"
+        git config --global user.name "Auto-Updater"
+        git config --global user.email "bot@github.com"
         git add data/lcds_publications.csv
-        git commit -m "Auto-update publications data" || echo "No changes to commit"
+        git commit -m "Update data" || echo "No changes"
         git push
