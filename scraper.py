@@ -2,15 +2,23 @@ import requests
 from bs4 import BeautifulSoup
 import pandas as pd
 import os
-import time
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # --- CONFIGURATION ---
 mailto = os.environ.get('USER_EMAIL', 'research_team@example.com')
-HEADERS = {'User-Agent': f'OxfordSubUnitTracker/SmartScore/1.0 (mailto:{mailto})'}
+HEADERS = {'User-Agent': f'LCDS-Tracker/Nuclear/1.0 (mailto:{mailto})'}
 
-# --- 1. STAFF DISCOVERY ---
+# --- 1. THE BLOCKLIST (The Nuclear Option) ---
+# If any of these appear in a Title or Journal, the paper is deleted.
+BLACKLIST_TERMS = [
+    'photocatalyst', 'baryon', 'graphene', 'nanoparticle', 'polymer', 
+    'lattice', 'spectroscopy', 'quantum', 'magnetic', 'catalysis', 
+    'solar cell', 'battery', 'fluid dynamics', 'semiconductor', 
+    'crystallography', 'astrophysics', 'galaxy', 'telescope', 's-scheme'
+]
+
+# --- 2. STAFF DISCOVERY ---
 def get_staff_list():
     url = "https://www.demography.ox.ac.uk/people"
     print(f"[{datetime.now().time()}] Fetching staff list...")
@@ -18,143 +26,110 @@ def get_staff_list():
     try:
         res = requests.get(url, headers=HEADERS, timeout=20)
         soup = BeautifulSoup(res.text, 'html.parser')
-        selectors = ['h3.paragraph-side-title', 'div.person-name', 'span.field-content h3', '.views-field-title a']
+        selectors = ['h3.paragraph-side-title', '.views-field-title a']
         for s in selectors:
             for el in soup.select(s):
                 clean = el.get_text(strip=True).replace('Dr ', '').replace('Prof ', '').replace('Professor ', '').strip()
-                # strict length check to avoid capturing sentences
                 if clean and len(clean.split()) >= 2 and len(clean) < 30:
                     names.add(clean)
         return sorted(list(names))
     except: return []
 
-# --- 2. SMART ORCID RESOLUTION (The Fix) ---
+# --- 3. SMART SCORING (Stricter) ---
 def get_smart_orcid(name):
-    """
-    Scores potential authors to distinguish the Demographer from the Chemist.
-    """
     try:
-        # Search for the name
         r = requests.get("https://api.openalex.org/authors", params={'search': name}, headers=HEADERS, timeout=5)
         if r.status_code != 200: return None
         
-        candidates = r.json().get('results', [])
-        best_score = -50
+        best_score = -100
         best_orcid = None
         
-        for cand in candidates:
+        for cand in r.json().get('results', []):
             score = 0
-            
-            # Combine all affiliation text
+            # Metadata text
             affs = [a.get('institution', {}).get('display_name', '').lower() for a in cand.get('affiliations', [])]
-            last = cand.get('last_known_institution', {}).get('display_name', '').lower()
             topics = [t.get('display_name', '').lower() for t in cand.get('topics', [])]
-            full_text = " ".join(affs + [last] + topics)
+            full_text = " ".join(affs + topics)
             
-            # --- SCORING RULES ---
-            # 1. POSITIVE (The Right Dept)
-            if 'demography' in full_text: score += 10
-            if 'population' in full_text: score += 10
-            if 'sociology' in full_text: score += 10
-            if 'leverhulme' in full_text: score += 15
-            if 'nuffield' in full_text: score += 5
+            # POSITIVE
+            if 'demography' in full_text: score += 20
+            if 'sociology' in full_text: score += 15
+            if 'population' in full_text: score += 15
+            if 'economics' in full_text: score += 5
             if 'oxford' in full_text: score += 5
             
-            # 2. NEGATIVE (The Wrong Dept - The "Chemistry Filter")
-            if 'chemistry' in full_text: score -= 100
-            if 'engineering' in full_text: score -= 100
-            if 'physics' in full_text: score -= 100
-            if 'clinical medicine' in full_text: score -= 50
-            
-            # 3. TOPIC CHECK (If available)
-            if any(t in full_text for t in ['fertility', 'mortality', 'migration', 'census']):
-                score += 5
+            # NEGATIVE (Expanded)
+            if any(x in full_text for x in ['chemistry', 'materials', 'physics', 'engineering', 'energy', 'device', 'nano']):
+                score -= 500 # Immediate disqualification
 
-            # Select if this is the best valid match so far
-            if score > best_score and score > 0: # Must be positive to count
+            if score > best_score and score > 10: # Threshold raised to 10
                 best_score = score
                 best_orcid = cand['orcid'].replace('https://orcid.org/', '')
-
+                
         return best_orcid
     except: return None
 
-# --- 3. CROSSREF FETCH (Recent & Preprints) ---
-def standardize_date(d):
-    try:
-        if isinstance(d, list): return "{:04d}-{:02d}-{:02d}".format(*d[0]) if len(d[0])==3 else "{:04d}-{:02d}-01".format(*d[0])
-        return str(d).split('T')[0]
-    except: return datetime.now().strftime('%Y-%m-%d')
-
+# --- 4. FETCH & FILTER ---
 def fetch_works(name, orcid):
     works = []
     if not orcid: return []
     try:
-        # Sort by CREATED to catch "last week's" papers/preprints
-        url = f"https://api.crossref.org/works?filter=orcid:{orcid},from-pub-date:2020-01-01&sort=created&order=desc&rows=50"
+        url = f"https://api.crossref.org/works?filter=orcid:{orcid},from-pub-date:2020-01-01&sort=created&order=desc&rows=40"
         r = requests.get(url, headers=HEADERS, timeout=20)
-        
         if r.status_code == 200:
             for item in r.json().get('message', {}).get('items', []):
-                if 'DOI' not in item: continue
+                title = item.get('title', ['Untitled'])[0]
+                journal = item.get('container-title', [''])[0]
                 
-                # Strict Type
-                ptype = "Preprint" if (item.get('type') == 'posted-content' or item.get('subtype') == 'preprint') else "Journal Article"
-                
-                # Strict Date
-                date_obj = item.get('created') or item.get('published-online') or item.get('published-print')
-                final_date = standardize_date(date_obj['date-parts'] if date_obj and 'date-parts' in date_obj else date_obj)
-                
-                # Get Container (Journal Name)
-                container = item.get('container-title', [''])[0]
-                if not container: container = item.get('institution', {}).get('name') # Preprints
-                if not container: container = "Preprint/Other"
+                # --- THE NUCLEAR FILTER ---
+                # Check Title and Journal for forbidden engineering terms
+                check_text = (title + " " + journal).lower()
+                if any(bad in check_text for bad in BLACKLIST_TERMS):
+                    continue # Skip this paper
+
+                # Date Logic
+                date_obj = item.get('created') or item.get('published-online')
+                if date_obj and 'date-parts' in date_obj:
+                    d = date_obj['date-parts'][0]
+                    final_date = "{:04d}-{:02d}-{:02d}".format(*d) if len(d)==3 else "{:04d}-{:02d}-01".format(*d)
+                else: final_date = datetime.now().strftime('%Y-%m-%d')
 
                 works.append({
                     'Date Available Online': final_date,
                     'LCDS Author': name,
-                    'All Authors': ", ".join([f"{a.get('given','')} {a.get('family','')}" for a in item.get('author', [])]),
-                    'DOI': f"https://doi.org/{item['DOI']}",
-                    'Paper Title': item.get('title', ['Untitled'])[0],
-                    'Journal Name': container,
+                    'Paper Title': title,
+                    'Journal Name': journal if journal else "Preprint",
                     'Citation Count': item.get('is-referenced-by-count', 0),
-                    'Publication Type': ptype,
+                    'Publication Type': "Preprint" if (item.get('subtype')=='preprint') else "Journal Article",
+                    'DOI': f"https://doi.org/{item['DOI']}",
                     'DOI_Clean': item['DOI'].lower().strip()
                 })
     except: pass
     return works
 
 def process_author(name):
-    # 1. Smart Resolve (Avoids Chemists)
     orcid = get_smart_orcid(name)
-    if not orcid: return []
-    # 2. Fetch
-    return fetch_works(name, orcid)
+    return fetch_works(name, orcid) if orcid else []
 
 if __name__ == "__main__":
-    os.makedirs("data", exist_ok=True)
     staff = get_staff_list()
-    print(f"Scanning {len(staff)} authors (Smart Affiliation Mode)...")
-    
-    all_records = []
-    # 8 Workers is safe
+    all_recs = []
+    # 8 Workers
     with ThreadPoolExecutor(max_workers=8) as exc:
         futures = {exc.submit(process_author, n): n for n in staff}
         for f in as_completed(futures):
-            res = f.result()
-            if res: all_records.extend(res)
+            if f.result(): all_recs.extend(f.result())
 
-    if all_records:
-        df = pd.DataFrame(all_records)
-        df = df.sort_values(by='Date Available Online', ascending=False)
-        df = df.drop_duplicates(subset=['DOI_Clean'], keep='first')
-        df = df.drop(columns=['DOI_Clean'])
-        
-        # Fill missing cols
-        for c in ['Date Available Online', 'LCDS Author', 'Paper Title', 'Journal Name', 'Citation Count', 'Publication Type', 'DOI']:
+    if all_recs:
+        df = pd.DataFrame(all_recs)
+        df = df.sort_values(by='Date Available Online', ascending=False).drop_duplicates(subset=['DOI_Clean'])
+        df.drop(columns=['DOI_Clean'], inplace=True)
+        # Ensure cols
+        for c in ['Date Available Online','LCDS Author','Paper Title','Journal Name','Citation Count','Publication Type','DOI']:
             if c not in df.columns: df[c] = ""
-            
+        
+        os.makedirs("data", exist_ok=True)
         df.to_csv("data/lcds_publications.csv", index=False)
-        print(f"SUCCESS: Saved {len(df)} records.")
+        print(f"SUCCESS: Saved {len(df)} records (Cleaned).")
     else:
-        print("WARNING: No records found.")
-        pd.DataFrame(columns=['Date Available Online']).to_csv("data/lcds_publications.csv", index=False)
+        print("No records found.")
