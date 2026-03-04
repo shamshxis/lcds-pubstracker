@@ -6,8 +6,20 @@ import time
 from datetime import datetime
 
 # --- CONFIGURATION ---
-HEADERS = {'User-Agent': 'LCDS-Tracker/Stable-v1'}
+HEADERS = {'User-Agent': 'LCDS-Tracker/Final-v3'}
 CSV_FILE = "data/lcds_publications.csv"
+
+# --- KNOWN ORCIDS (The "Golden List") ---
+# This bypasses the search entirely for problematic names
+KNOWN_ORCIDS = {
+    "Andrew Stephen": "0000-0001-9156-6461",  # Marketing (Saïd Business School)
+    "Wen Su": "0000-0001-5722-6805",          # Engineering/Demography
+    "Melinda Mills": "0000-0003-0194-6131",
+    "Jennifer Dowd": "0000-0003-2007-3598",
+    "Thomas Rawson": "0000-0002-3908-1188",   # Zoology/Epi
+    "Per Block": "0000-0002-8664-9008",
+    "Ridhu Kashyap": "0000-0003-1620-8041"
+}
 
 # --- 1. STAFF DISCOVERY ---
 def get_staff_list():
@@ -34,47 +46,37 @@ def get_staff_list():
             if len(n) > 3 and "View profile" not in n:
                 clean_names.append(n)
 
-        # 4. Force Inclusions (The "Must Have" List)
-        leads = ["Melinda Mills", "Jennifer Dowd", "Thomas Rawson", "Per Block", "Andrew Stephen", "Ridhu Kashyap", "Wen Su"]
-        for l in leads:
-            if l not in clean_names: clean_names.append(l)
+        # 4. Force Inclusions from Golden List
+        for name in KNOWN_ORCIDS.keys():
+            if name not in clean_names: clean_names.append(name)
             
         return sorted(list(set(clean_names)))
     except Exception as e:
         print(f"❌ Scrape Error: {e}")
-        return ["Melinda Mills", "Jennifer Dowd", "Andrew Stephen"]
+        return list(KNOWN_ORCIDS.keys())
 
-# --- 2. ORCID IDENTIFICATION (With Identity Traps) ---
+# --- 2. ORCID IDENTIFICATION ---
 def get_orcid(name):
+    # 1. Check Golden List FIRST
+    if name in KNOWN_ORCIDS:
+        return KNOWN_ORCIDS[name]
+
+    # 2. Search OpenAlex (Fallback for others)
     try:
-        r = requests.get("https://api.openalex.org/authors", params={'search': name}, headers=HEADERS, timeout=10)
+        r = requests.get("https://api.openalex.org/authors", params={'search': name}, headers=HEADERS, timeout=5)
         if r.status_code == 200:
             results = r.json().get('results', [])
-            
             for person in results:
                 affils = " ".join([a.get('institution', {}).get('display_name', '').lower() for a in person.get('affiliations', [])])
                 affils += " " + person.get('last_known_institution', {}).get('display_name', '').lower()
                 
-                # --- TRAP: ANDREW STEPHEN ---
-                if "andrew stephen" in name.lower():
-                    # Reject Oncologist/Geneticist
-                    if any(x in affils for x in ["oncology", "genetics", "surgery", "medicine"]): continue 
-                    # Accept Business/Marketing
-                    if any(x in affils for x in ["marketing", "business", "saïd", "management", "retail"]):
-                        return person['orcid'].split('/')[-1]
-                    continue
-
-                # --- STANDARD CHECKS ---
+                # Oxford Check
                 if "oxford" not in affils: continue
                 
-                # Wen Su Override
-                if "wen su" in name.lower(): return person['orcid'].split('/')[-1]
-
-                # General Topics
+                # Topic Check
                 valid = ["demographic", "sociology", "nuffield", "leverhulme", "zoology", "economics", "epidemiology", "public health", "statistics"]
                 if any(v in affils for v in valid):
                     return person['orcid'].split('/')[-1]
-                    
     except: pass
     return None
 
@@ -91,7 +93,7 @@ def fetch_works(name, orcid):
                 d = item.get('created', {}).get('date-parts', [[2020,1,1]])[0]
                 date_str = f"{d[0]}-{d[1]:02d}-01" if len(d)>=2 else f"{d[0]}-01-01"
                 
-                # Country Enrichment (Quick)
+                # Country Enrichment
                 countries = ""
                 try:
                     if 'DOI' in item:
@@ -125,9 +127,7 @@ if __name__ == "__main__":
     staff = get_staff_list()
     
     print(f"[{datetime.now().strftime('%H:%M:%S')}] 🚀 Collecting data for {len(staff)} researchers...")
-    print("    (This handles data in memory to prevent file corruption)")
     
-    # COLLECT ALL DATA IN MEMORY FIRST
     all_data = []
     for person in staff:
         print(f"    Processing {person}...", end=" ", flush=True)
@@ -139,10 +139,8 @@ if __name__ == "__main__":
         else:
             print("No ORCID match.")
 
-    # SAVE ONCE AT THE END
     if all_data:
         df = pd.DataFrame(all_data)
-        # Deduplicate strictly by DOI
         df = df.drop_duplicates(subset=['DOI'])
         df.to_csv(CSV_FILE, index=False)
         print(f"\n✅ SUCCESS: Database updated with {len(df)} unique publications.")
