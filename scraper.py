@@ -3,135 +3,65 @@ from bs4 import BeautifulSoup
 import pandas as pd
 import os
 import time
-from datetime import datetime, timedelta
+from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-# --- CONFIGURATION (Loaded from Environment Variables for Security) ---
-# Set these in your GitHub Repository Secrets
+# --- CONFIGURATION ---
+# (Keep your existing configuration here)
 mailto = os.environ.get('USER_EMAIL', 'research_team@example.com')
 HEADERS = {'User-Agent': f'LCDS-Pubs-Tracker/2.0 (mailto:{mailto})'}
 
 # --- HELPER FUNCTIONS ---
+
 def get_staff_list():
-    """Scrapes the LCDS People page for current staff."""
+    """Scrapes the LCDS People page for current staff with better selectors."""
     url = "https://www.demography.ox.ac.uk/people"
-    print(f"[{datetime.now().time()}] Fetching staff list...")
+    print(f"[{datetime.now().time()}] Fetching staff list from {url}...")
+    
+    names = set()
     try:
         res = requests.get(url, headers=HEADERS, timeout=30)
         res.raise_for_status()
         soup = BeautifulSoup(res.text, 'html.parser')
-        # Updated selectors based on standard Oxford Drupal templates
-        selectors = ['.person-name', 'h3.node__title', '.views-field-title a']
-        names = set()
+        
+        # STRATEGY 1: Look for specific 'Profile' links which usually contain the full name
+        # This is often the most reliable way to get names without titles like "Dr" or "Prof"
+        for link in soup.select('a[href^="/people/"]'):
+            name = link.get_text(strip=True)
+            # Filter out junk links like "More people" or empty strings
+            if name and len(name.split()) >= 2 and "View profile" not in name:
+                names.add(name)
+
+        # STRATEGY 2: Look for Heading tags often used for names in grid views
+        # (h2, h3, h4 with specific classes often used in Drupal/Oxford sites)
+        selectors = [
+            'h3.node__title',                # Common Drupal teaser title
+            '.views-field-title',            # Common Views field
+            '.profile-title',                # Specific profile class
+            'div.field-content a'            # Generic field content link
+        ]
+        
         for s in selectors:
             for el in soup.select(s):
                 n = el.get_text(strip=True)
-                if n and len(n.split()) > 1:
+                if n and len(n.split()) >= 2:
                     names.add(n)
+
+        # Clean up names (remove titles if they got stuck, though OpenAlex handles them okay)
+        clean_names = []
+        for n in names:
+            # excessive cleaning not needed for OpenAlex, but good to trim
+            clean_names.append(n.strip())
+            
+        final_list = sorted(list(set(clean_names)))
         
-        # Manual additions if needed
-        names.add("Ursula Gazeley")
-        return sorted(list(names))
+        print(f"[{datetime.now().time()}] Successfully found {len(final_list)} staff members.")
+        return final_list
+
     except Exception as e:
-        print(f"Error fetching staff: {e}")
-        return ["Melinda Mills"] # Fallback
+        print(f"[ERROR] Failed to scrape staff list: {e}")
+        # FALLBACK: If scraping fails entirely, returning an empty list is better 
+        # than a fake one so you know it failed.
+        return []
 
-def get_affiliation_status(work_affiliations):
-    """Determines if the work is attributed to LCDS, Oxford, or External."""
-    if not work_affiliations:
-        return "Unknown"
-    
-    # Normalize text for checking
-    aff_text = " ".join([str(a).lower() for a in work_affiliations])
-    
-    if "leverhulme" in aff_text or "demographic science" in aff_text:
-        return "LCDS (Core)"
-    elif "oxford" in aff_text or "nuffield" in aff_text:
-        return "Oxford (Other)"
-    else:
-        return "External/Previous"
-
-def fetch_openalex_data(name):
-    """Fetches works from OpenAlex with rich metadata (Topics, Affiliations)."""
-    works = []
-    try:
-        # 1. Resolve Author ID
-        url_author = "https://api.openalex.org/authors"
-        params = {'search': name}
-        r = requests.get(url_author, params=params, headers=HEADERS)
-        if r.status_code != 200: return []
-        
-        results = r.json().get('results', [])
-        if not results: return []
-        
-        # Simple heuristic: pick the first result or filter by Oxford-related context
-        author_id = results[0]['id'] # OpenAlex ID (e.g., A5003636662)
-
-        # 2. Fetch Works (Last 6 Years + Preprints)
-        url_works = "https://api.openalex.org/works"
-        # Filter: Author ID + Published since 2019
-        filter_str = f"author.id:{author_id},publication_year:>2018"
-        params_works = {'filter': filter_str, 'per-page': 200}
-        
-        rw = requests.get(url_works, params=params_works, headers=HEADERS)
-        if rw.status_code == 200:
-            items = rw.json().get('results', [])
-            for item in items:
-                # Extract Primary Topic/Field
-                topic = "Multidisciplinary"
-                if item.get('primary_topic'):
-                    topic = item['primary_topic'].get('field', {}).get('display_name', 'Other')
-                
-                # Check Affiliation specific to this work
-                authorships = item.get('authorships', [])
-                my_affiliations = []
-                for auth in authorships:
-                    if auth.get('author', {}).get('id') == author_id:
-                        my_affiliations = [inst.get('display_name', '') for inst in auth.get('institutions', [])]
-                
-                aff_status = get_affiliation_status(my_affiliations)
-
-                works.append({
-                    'Author': name,
-                    'Title': item.get('display_name'),
-                    'Journal': item.get('primary_location', {}).get('source', {}).get('display_name') or "Preprint/Other",
-                    'Date': item.get('publication_date'),
-                    'Year': item.get('publication_year'),
-                    'DOI': item.get('doi'),
-                    'Type': item.get('type'),
-                    'Field': topic,
-                    'Affiliation_Scope': aff_status,
-                    'Citation_Count': item.get('cited_by_count', 0),
-                    'Source': 'OpenAlex'
-                })
-    except Exception as e:
-        print(f"Error for {name}: {e}")
-    return works
-
-# --- MAIN EXECUTION ---
-if __name__ == "__main__":
-    print("Starting extraction...")
-    staff = get_staff_list()
-    print(f"Found {len(staff)} staff members.")
-    
-    all_data = []
-    
-    # Run in parallel for speed
-    with ThreadPoolExecutor(max_workers=5) as executor:
-        future_to_name = {executor.submit(fetch_openalex_data, name): name for name in staff}
-        for future in as_completed(future_to_name):
-            data = future.result()
-            if data:
-                all_data.extend(data)
-                
-    if all_data:
-        df = pd.DataFrame(all_data)
-        # Deduplicate by DOI, keeping the most recent record
-        df = df.drop_duplicates(subset=['DOI'], keep='first')
-        
-        # Save to CSV
-        os.makedirs("data", exist_ok=True)
-        df.to_csv("data/lcds_publications.csv", index=False)
-        print(f"Successfully saved {len(df)} records to data/lcds_publications.csv")
-    else:
-        print("No records found.")
+# ... (The rest of your code: get_affiliation_status, fetch_openalex_data, main execution) ...
