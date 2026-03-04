@@ -176,67 +176,114 @@ st.subheader(f"📄 Recent Publications")
 
 # Select columns
 cols_to_show = ['Date Available Online', 'LCDS Author', 'Paper Title', 'Journal Name', 'Publication Type', 'Citation Count', 'DOI']
-# Ensure they exist
 final_cols = [c for c in cols_to_show if c in df_filtered.columns]
 
-# Create a display copy of the dataframe
+# Create display copy
 df_display = df_filtered[final_cols].copy()
 
 # 1. Turn DOI links into clickable HTML anchors
 if 'DOI' in df_display.columns:
-    df_display['DOI'] = df_display['DOI'].apply(lambda x: f'<a href="{x}" target="_blank">Link</a>' if str(x).startswith('http') else x)
+    df_display['DOI'] = df_display['DOI'].apply(lambda x: f'<a href="{x}" target="_blank">View</a>' if str(x).startswith('http') else x)
 
-# 2. Convert to HTML and render with unsafe_allow_html=True
-# escape=False is CRITICAL: it tells pandas NOT to escape the tags, letting <i>Title</i> render as italic
-st.markdown(
-    df_display.to_html(escape=False, index=False), 
-    unsafe_allow_html=True
-)
+# 2. Convert to HTML (escape=False allows tags to render)
+html_table = df_display.to_html(escape=False, index=False, border=0, classes="styled-table")
 
-# Add some CSS to make this HTML table look like a Streamlit dataframe
-st.markdown("""
-<style>
-    table {
-        width: 100%;
-        border-collapse: collapse;
-        font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
-        font-size: 0.9rem;
-        color: var(--text-color);
-        background-color: transparent;
-    }
-    th {
-        text-align: left;
-        background-color: rgba(0, 33, 71, 0.05); /* Very faint Oxford Blue */
-        padding: 10px;
-        border-bottom: 2px solid #ddd;
-        color: #002147;
-    }
-    /* Dark mode adjustment for headers */
-    @media (prefers-color-scheme: dark) {
-        th {
-            color: #FFD700; /* Gold */
-            background-color: rgba(255, 255, 255, 0.1);
-        }
-        td {
-            border-bottom: 1px solid #444;
-        }
-    }
-    td {
-        padding: 8px 10px;
-        border-bottom: 1px solid #eee;
-    }
-    tr:hover {
-        background-color: rgba(0,0,0,0.02);
-    }
-    a {
-        color: #0066cc;
-        text-decoration: none;
-        font-weight: bold;
-    }
-    a:hover {
-        text-decoration: underline;
-    }
-</style>
+# 3. Render with Custom CSS wrapper for Scrollbars & Google Fonts
+st.markdown(f"""
+    <style>
+        /* Import Google Font */
+        @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;500&display=swap');
+
+        /* Scrollable Container */
+        .table-container {{
+            max-height: 500px;       /* Fixed height */
+            overflow-y: auto;        /* Vertical scrollbar */
+            overflow-x: hidden;      /* Hide horizontal scroll */
+            border: 1px solid #ddd;
+            border-radius: 8px;      /* Rounded corners */
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05); /* Subtle shadow */
+        }}
+
+        /* Table Styling */
+        .styled-table {{
+            width: 100%;
+            border-collapse: collapse;
+            font-family: 'Roboto', sans-serif; /* Google Font */
+            font-size: 0.85rem;      /* Small, professional size */
+        }}
+
+        /* Sticky Header */
+        .styled-table thead tr th {{
+            position: sticky;
+            top: 0;
+            background-color: #002147; /* Oxford Blue */
+            color: #ffffff;
+            text-align: left;
+            padding: 12px 15px;
+            font-weight: 500;
+            z-index: 1; /* Keeps header on top of content */
+        }}
+
+        /* Row Styling */
+        .styled-table tbody tr {{
+            border-bottom: 1px solid #eeeeee;
+        }}
+        
+        .styled-table tbody tr:nth-of-type(even) {{
+            background-color: rgba(0,0,0,0.02); /* Zebra striping */
+        }}
+        
+        .styled-table tbody tr:hover {{
+            background-color: rgba(0, 33, 71, 0.05); /* Hover effect */
+            transition: background-color 0.2s ease-in-out;
+        }}
+
+        .styled-table td {{
+            padding: 10px 15px;
+            color: var(--text-color);
+        }}
+
+        /* Link Styling */
+        .styled-table a {{
+            color: #0066cc;
+            text-decoration: none;
+            font-weight: 600;
+            border-bottom: 1px dotted #0066cc;
+        }}
+        .styled-table a:hover {{
+            color: #003366;
+            border-bottom: 1px solid #003366;
+        }}
+
+        /* Dark Mode Adjustments */
+        @media (prefers-color-scheme: dark) {{
+            .styled-table thead tr th {{
+                background-color: #1E1E1E;
+                color: #FFD700; /* Gold Header Text */
+                border-bottom: 2px solid #333;
+            }}
+            .styled-table tbody tr {{
+                border-bottom: 1px solid #333;
+            }}
+            .styled-table tbody tr:nth-of-type(even) {{
+                background-color: rgba(255,255,255,0.05);
+            }}
+            .styled-table tbody tr:hover {{
+                background-color: rgba(255,255,255,0.1);
+            }}
+            .styled-table a {{
+                color: #4da6ff;
+                border-bottom: 1px dotted #4da6ff;
+            }}
+            .table-container {{
+                border: 1px solid #444;
+            }}
+        }}
+    </style>
+
+    <div class="table-container">
+        {html_table}
+    </div>
 """, unsafe_allow_html=True)
 
 # 5. FOOTER
