@@ -2,148 +2,211 @@ import requests
 from bs4 import BeautifulSoup
 import pandas as pd
 import os
+import re
 import time
 from datetime import datetime
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # --- CONFIGURATION ---
-HEADERS = {'User-Agent': 'LCDS-Tracker/Final-Production'}
-CSV_FILE = "data/lcds_publications.csv"
+mailto = os.environ.get('USER_EMAIL', 'research_team@example.com')
+HEADERS = {'User-Agent': f'LCDS-Tracker/Final (mailto:{mailto})'}
 
-# --- THE GOLDEN LIST (Hardcoded ORCIDs to prevent errors) ---
-# Andrew Stephen is explicitly set to the Marketing Professor ORCID
-KNOWN_ORCIDS = {
-    "Andrew Stephen": "0000-0001-9156-6461",  # Marketing (Saïd Business School)
-    "Wen Su": "0000-0001-5722-6805",          # Engineering/Demography
-    "Melinda Mills": "0000-0003-0194-6131",
-    "Jennifer Dowd": "0000-0003-2007-3598",
-    "Thomas Rawson": "0000-0002-3908-1188",
-    "Per Block": "0000-0002-8664-9008",
-    "Ridhu Kashyap": "0000-0003-1620-8041"
-}
-
-# --- 1. STAFF DISCOVERY ---
-def get_staff_list():
-    print(f"[{datetime.now().strftime('%H:%M:%S')}] 🔍 Scanning LCDS website...")
+# --- 1. ROBUST IDENTIFICATION FROM WEBSITE ---
+def get_staff_names():
     url = "https://www.demography.ox.ac.uk/people"
+    print(f"[{datetime.now().time()}] Scraping LCDS website...")
     names = set()
-    
     try:
         res = requests.get(url, headers=HEADERS, timeout=30)
         soup = BeautifulSoup(res.text, 'html.parser')
         
-        # 1. Main Grid
-        for div in soup.select("div.views-field-title span.field-content"):
-            names.add(div.get_text(strip=True))
-
-        # 2. Sidebars
-        for h3 in soup.select("h3.paragraph-side-title"):
-            names.add(h3.get_text(strip=True))
-
-        # 3. Clean
-        clean_names = []
-        for raw in names:
-            n = raw.replace('Dr ', '').replace('Prof ', '').replace('Professor ', '').strip()
-            if len(n) > 3 and "View profile" not in n:
-                clean_names.append(n)
-
-        # 4. Force Inclusions (Golden List)
-        for name in KNOWN_ORCIDS.keys():
-            if name not in clean_names: clean_names.append(name)
-            
-        return sorted(list(set(clean_names)))
+        # Selectors to catch names in various layout formats
+        selectors = [
+            'h3.paragraph-side-title', 
+            '.views-field-title a', 
+            '.person-name', 
+            'h3.node__title',
+            'span.field-content h3'
+        ]
+        
+        for s in selectors:
+            for el in soup.select(s):
+                raw_text = el.get_text(strip=True)
+                
+                # --- NAME CLEANING ---
+                # Remove titles (Dr, Prof, etc.)
+                clean = re.sub(r'^(Dr|Prof|Professor|Mr|Mrs|Ms|Mx)\.?\s+', '', raw_text, flags=re.IGNORECASE)
+                # Remove suffixes like " - Director"
+                clean = clean.split(' - ')[0].split(',')[0].strip()
+                
+                # Filter out junk
+                junk = ["View profile", "Read more", "Contact", "Email", "Research", "About"]
+                if any(x.lower() in clean.lower() for x in junk): continue
+                
+                # Length check (Names are usually 2-4 words)
+                if 2 <= len(clean.split()) <= 5 and len(clean) < 40:
+                    names.add(clean)
+        
+        staff_list = sorted(list(names))
+        print(f"Found {len(staff_list)} potential researchers.")
+        return staff_list
     except Exception as e:
-        print(f"❌ Scrape Error: {e}")
-        return list(KNOWN_ORCIDS.keys())
+        print(f"[ERROR] Website scrape failed: {e}")
+        return []
 
-# --- 2. ORCID IDENTIFICATION ---
-def get_orcid(name):
-    # A. Check Golden List FIRST (Bypasses search for Andrew Stephen)
-    if name in KNOWN_ORCIDS:
-        return KNOWN_ORCIDS[name]
-
-    # B. Search OpenAlex (Fallback)
+# --- 2. STRICT AFFILIATION FILTER (The ORCID Audit) ---
+def get_verified_orcid(name):
+    """
+    1. Search OpenAlex for the name.
+    2. Audit the ORCID record's full affiliation history.
+    3. Return ORCID ONLY if they have a verified link to Oxford/LCDS.
+    """
     try:
-        r = requests.get("https://api.openalex.org/authors", params={'search': name}, headers=HEADERS, timeout=5)
+        # Search for author
+        r = requests.get("https://api.openalex.org/authors", params={'search': name}, headers=HEADERS, timeout=10)
         if r.status_code == 200:
             results = r.json().get('results', [])
-            for person in results:
-                affils = " ".join([a.get('institution', {}).get('display_name', '').lower() for a in person.get('affiliations', [])])
-                affils += " " + person.get('last_known_institution', {}).get('display_name', '').lower()
+            
+            for result in results:
+                if 'orcid' not in result: continue
                 
-                # Filters
-                if "oxford" not in affils: continue
+                # AUDIT: Check all historical affiliations (current + past)
+                affiliations = [a.get('institution', {}).get('display_name', '').lower() for a in result.get('affiliations', [])]
+                last_known = result.get('last_known_institution', {}).get('display_name', '').lower()
                 
-                valid = ["demographic", "sociology", "nuffield", "leverhulme", "zoology", "economics", "epidemiology", "public health", "statistics"]
-                if any(v in affils for v in valid):
-                    return person['orcid'].split('/')[-1]
+                # Combine all institution text associated with this ORCID
+                history_text = " ".join(affiliations + [last_known])
+                
+                # The "Green List" of keywords
+                keywords = ['oxford', 'leverhulme', 'demographic', 'nuffield', 'sociology', 'population', 'lcds']
+                
+                # If ANY keyword appears in their ORCID history, they are valid.
+                if any(k in history_text for k in keywords):
+                    return result['orcid'].replace('https://orcid.org/', '')
     except: pass
     return None
 
-# --- 3. FETCH WORKS + COUNTRY DATA ---
-def fetch_works(name, orcid):
+# --- 3. CROSSREF FETCH (Primary Source for Data) ---
+def fetch_crossref(name, orcid):
     works = []
+    if not orcid: return []
+    
     try:
-        url = f"https://api.crossref.org/works?filter=orcid:{orcid},from-pub-date:2019-09-01&sort=created&order=desc&rows=60"
-        r = requests.get(url, headers=HEADERS, timeout=10)
+        # Fetch from 2019 to present (Deep History)
+        # Sort by 'created' to ensure we catch papers from "Last Week"
+        url = f"https://api.crossref.org/works?filter=orcid:{orcid},from-pub-date:2019-01-01&sort=created&order=desc&rows=100"
+        r = requests.get(url, headers=HEADERS, timeout=20)
         
         if r.status_code == 200:
             for item in r.json().get('message', {}).get('items', []):
-                # Date
-                d = item.get('created', {}).get('date-parts', [[2020,1,1]])[0]
-                date_str = f"{d[0]}-{d[1]:02d}-01" if len(d)>=2 else f"{d[0]}-01-01"
+                if 'DOI' not in item: continue
+
+                # A. DATE LOGIC (Priority: Created -> Online -> Print)
+                # 'created' is the best proxy for "Date Available Online" for preprints
+                date_obj = item.get('created') or item.get('published-online') or item.get('published-print')
+                final_date = datetime.now().strftime('%Y-%m-%d') # Fallback
                 
-                # --- COUNTRY ENRICHMENT (Restored) ---
-                countries = ""
-                try:
-                    if 'DOI' in item:
-                        # Call OpenAlex per DOI to get Affiliation Country
-                        oa_url = f"https://api.openalex.org/works/doi:https://doi.org/{item['DOI']}?select=authorships"
-                        oa_r = requests.get(oa_url, headers=HEADERS, timeout=2)
-                        if oa_r.status_code == 200:
-                            cs = set()
-                            for a in oa_r.json().get('authorships', []):
-                                for i in a.get('institutions', []):
-                                    if i.get('country_code'): cs.add(i['country_code'])
-                            countries = ",".join(cs)
-                except: pass
-                # -------------------------------------
+                if date_obj:
+                    if 'date-time' in date_obj: # ISO format
+                         final_date = str(date_obj['date-time']).split('T')[0]
+                    elif 'date-parts' in date_obj: # Parts format
+                        p = date_obj['date-parts'][0]
+                        if len(p) == 3: final_date = f"{p[0]}-{p[1]:02d}-{p[2]:02d}"
+                        elif len(p) == 2: final_date = f"{p[0]}-{p[1]:02d}-01"
+                        elif len(p) == 1: final_date = f"{p[0]}-01-01"
+
+                # B. TYPE LOGIC
+                w_type = "Preprint" if item.get('subtype') == 'preprint' or item.get('type') == 'posted-content' else "Journal Article"
 
                 works.append({
-                    'Date': date_str,
-                    'Year': d[0],
+                    'DOI': f"https://doi.org/{item['DOI']}",
+                    'DOI_Clean': item['DOI'].lower().strip(),
+                    'Date Available Online': final_date,
+                    'Year': final_date.split('-')[0],
                     'LCDS Author': name,
-                    'Title': item.get('title', ['Untitled'])[0],
-                    'Journal': item.get('container-title', [''])[0],
-                    'Type': 'Preprint' if item.get('subtype')=='preprint' else 'Article',
-                    'Citations': item.get('is-referenced-by-count', 0),
-                    'DOI': item.get('DOI'),
-                    'Countries': countries
+                    'Paper Title': item.get('title', ['Untitled'])[0],
+                    'Journal Name': item.get('container-title', [''])[0] if item.get('container-title') else "Preprint/Other",
+                    'Citation Count': item.get('is-referenced-by-count', 0),
+                    'Publication Type': w_type,
+                    'Journal Area': "Pending" # Placeholder
                 })
     except: pass
     return works
 
+# --- 4. OPENALEX ENRICHMENT (Secondary Source for Topics) ---
+def enrich_data(records):
+    if not records: return []
+    
+    # Map DOI -> Topic
+    dois = [r['DOI_Clean'] for r in records]
+    doi_map = {}
+    
+    # Bulk query OpenAlex for Topics (Chunked to respect limits)
+    def chunker(seq, size): return (seq[pos:pos + size] for pos in range(0, len(seq), size))
+    
+    for chunk in chunker(dois, 50):
+        try:
+            f = "|".join([f"doi:https://doi.org/{d}" for d in chunk])
+            url = f"https://api.openalex.org/works?filter={f}&per-page=50&select=doi,primary_topic"
+            r = requests.get(url, headers=HEADERS, timeout=15)
+            if r.status_code == 200:
+                for res in r.json().get('results', []):
+                    d = res.get('doi', '').replace('https://doi.org/', '').lower().strip()
+                    if res.get('primary_topic'):
+                        doi_map[d] = res['primary_topic']['field']['display_name']
+        except: pass
+
+    # Apply only the Topic
+    for r in records:
+        r['Journal Area'] = doi_map.get(r['DOI_Clean'], "Multidisciplinary")
+        del r['DOI_Clean'] # Cleanup
+        
+    return records
+
+# --- WORKER ---
+def process_author(name):
+    # 1. Verify Affiliation via ORCID
+    orcid = get_verified_orcid(name)
+    if not orcid: return []
+    
+    # 2. Scrape Data
+    raw_data = fetch_crossref(name, orcid)
+    
+    # 3. Enrich Data
+    return enrich_data(raw_data)
+
 # --- MAIN ---
 if __name__ == "__main__":
     os.makedirs("data", exist_ok=True)
-    staff = get_staff_list()
-    
-    print(f"[{datetime.now().strftime('%H:%M:%S')}] 🚀 Collecting data for {len(staff)} researchers...")
+    staff = get_staff_names()
+    print(f"Processing {len(staff)} names...")
     
     all_data = []
-    for person in staff:
-        print(f"    Processing {person}...", end=" ", flush=True)
-        orcid = get_orcid(person)
-        if orcid:
-            new_works = fetch_works(person, orcid)
-            all_data.extend(new_works)
-            print(f"Found {len(new_works)} works.")
-        else:
-            print("No ORCID match.")
-
+    # Using 5 workers to be safe with rate limits
+    with ThreadPoolExecutor(max_workers=5) as exc:
+        futures = {exc.submit(process_author, n): n for n in staff}
+        for f in as_completed(futures):
+            res = f.result()
+            if res: all_data.extend(res)
+            
     if all_data:
         df = pd.DataFrame(all_data)
-        df = df.drop_duplicates(subset=['DOI'])
-        df.to_csv(CSV_FILE, index=False)
-        print(f"\n✅ SUCCESS: Database updated with {len(df)} unique publications.")
+        df = df.sort_values(by='Date Available Online', ascending=False)
+        df = df.drop_duplicates(subset=['DOI'], keep='first') # Deduplicate
+        
+        # Ensure strict column order for UI
+        cols = ['Date Available Online', 'LCDS Author', 'Paper Title', 'Journal Name', 
+                'Journal Area', 'Publication Type', 'Citation Count', 'DOI', 'Year']
+        
+        # Fill missing cols if any
+        for c in cols:
+             if c not in df.columns: df[c] = ""
+
+        df = df[cols]
+        df.to_csv("data/lcds_publications.csv", index=False)
+        print(f"SUCCESS: Saved {len(df)} verified records.")
     else:
-        print("\n⚠️ No data found.")
+        print("WARNING: No records found.")
+        # Create empty CSV with correct headers
+        pd.DataFrame(columns=['Date Available Online', 'LCDS Author', 'Paper Title', 'Journal Name', 
+                'Journal Area', 'Publication Type', 'Citation Count', 'DOI', 'Year']).to_csv("data/lcds_publications.csv", index=False)
