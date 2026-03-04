@@ -155,7 +155,7 @@ st.sidebar.download_button(
 
 # --- MAIN DASHBOARD ---
 st.title("Leverhulme Centre for Demographic Science")
-st.markdown('<div class="trendy-sub">Leverhulme Centre for Demographic Science (LCDS) measuring our impact across the years.</div>', unsafe_allow_html=True)
+st.markdown('<div class="trendy-sub">Measuring our impact across the years.</div>', unsafe_allow_html=True)
 
 st.markdown(f"**Viewing:** {time_filter} | **Records Found:** {len(df_filtered)}")
 st.divider()
@@ -234,7 +234,7 @@ st.markdown(f'<div class="table-container">{html_table}</div>', unsafe_allow_htm
 # --- FOOTER ---
 st.markdown("""
     <div class="footer">
-        © Certified University of Oxford 2026 - All Rights Reserved. | 
-        <a href="https://www.demography.ox.ac.uk" target="_blank">demography.ox.ac.uk</a>
+        © University of Oxford 2026 - All Rights Reserved. | 
+        <a href="https://www.demography.ox.ac.uk" target="_blank">Visit our Website.</a>
     </div>
 """, unsafe_allow_html=True)
