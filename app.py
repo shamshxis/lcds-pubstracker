@@ -108,16 +108,40 @@ c4.metric("Active Authors", df_filtered['LCDS Author'].nunique())
 
 st.divider()
 
-# --- MAIN CHART (Full Width) ---
-st.subheader("📈 Citations Trend")
-df_yearly = df_filtered.groupby('Year')['Citation Count'].sum().reset_index()
-if not df_yearly.empty:
-    fig = px.bar(df_yearly, x='Year', y='Citation Count', 
-                 title="Total Citations per Year", 
-                 color_discrete_sequence=['#64B5F6'])
-    fig.update_layout(xaxis_title=None, yaxis_title=None, height=400)
-    st.plotly_chart(fig, use_container_width=True)
-else: st.info("No citation data available for this period.")
+# --- CHARTS ROW ---
+col1, col2 = st.columns(2)
+
+# Chart 1: Bar Chart (Citations per Year)
+with col1:
+    st.subheader("📈 Citations Trend")
+    df_yearly = df_filtered.groupby('Year')['Citation Count'].sum().reset_index()
+    if not df_yearly.empty:
+        fig = px.bar(df_yearly, x='Year', y='Citation Count', 
+                     title="Total Citations per Year", 
+                     color_discrete_sequence=['#64B5F6'])
+        fig.update_layout(xaxis_title=None, yaxis_title=None, height=350)
+        st.plotly_chart(fig, use_container_width=True)
+    else: st.info("No citation data available.")
+
+# Chart 2: Doughnut Chart (Citations by Journal)
+with col2:
+    st.subheader("🍩 Top Journals by Impact")
+    # Group by Journal and sum citations
+    df_journal = df_filtered.groupby('Journal Name')['Citation Count'].sum().reset_index()
+    # Filter out 0 citations to keep chart clean and sort
+    df_journal = df_journal[df_journal['Citation Count'] > 0].sort_values('Citation Count', ascending=False)
+    
+    # Optional: Take top 15 to prevent clutter, group rest as "Other" could be done but usually top 10-15 is enough
+    if not df_journal.empty:
+        # Use Pastel color sequence which pops against dark mode
+        fig_donut = px.pie(df_journal.head(15), values='Citation Count', names='Journal Name', 
+                           title="Citations per Journal (Top 15)",
+                           hole=0.6, 
+                           color_discrete_sequence=px.colors.qualitative.Pastel)
+        fig_donut.update_layout(height=350, showlegend=False) # Hide legend to save space, rely on hover
+        fig_donut.update_traces(textposition='inside', textinfo='percent+label')
+        st.plotly_chart(fig_donut, use_container_width=True)
+    else: st.info("No citation data available by journal.")
 
 st.divider()
 
@@ -141,7 +165,7 @@ st.dataframe(
 # Footer
 st.markdown("""
     <div class="footer">
-        © University of Oxford 2026 - All Rights Reserved. | 
+        © Leverhulme Centre for Demographic Science - University of Oxford 2026 - All Rights Reserved. | 
         <a href="https://www.demography.ox.ac.uk" target="_blank">demography.ox.ac.uk</a>
     </div>
 """, unsafe_allow_html=True)
