@@ -5,7 +5,7 @@ import plotly.io as pio
 import os
 from datetime import datetime, timedelta
 
-# --- 1. PAGE CONFIG & THEME ---
+# --- 1. CONFIG & THEME ---
 st.set_page_config(
     page_title="LCDS Impact Tracker",
     page_icon="🎓",
@@ -20,96 +20,50 @@ pio.templates.default = "plotly_dark"
 st.markdown("""
     <style>
         /* APP BACKGROUND */
-        .stApp {
-            background-color: #0b0c10;
-            color: #c5c6c7;
-        }
+        .stApp { background-color: #0b0c10; color: #c5c6c7; }
         
         /* SIDEBAR */
-        [data-testid="stSidebar"] {
-            background-color: #1f2833;
-            border-right: 1px solid #45a29e;
-        }
+        [data-testid="stSidebar"] { background-color: #1f2833; border-right: 1px solid #45a29e; }
         
-        /* HEADERS (Gradient Gold) */
-        h1, h2, h3 {
-            font-family: 'Helvetica Neue', sans-serif;
-            font-weight: 700;
-        }
+        /* HEADERS */
         .gold-header {
             background: linear-gradient(90deg, #D4AF37, #F2F2F2);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            font-size: 3rem;
-            font-weight: 800;
-            margin-bottom: 0px;
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+            font-size: 3rem; font-weight: 800; margin-bottom: 0px;
         }
-        .sub-text {
-            color: #66fcf1;
-            font-size: 1.1rem;
-            margin-bottom: 2rem;
-            border-bottom: 1px solid #45a29e;
-            padding-bottom: 1rem;
-        }
+        .sub-text { color: #66fcf1; font-size: 1.1rem; margin-bottom: 2rem; border-bottom: 1px solid #45a29e; padding-bottom: 1rem; }
 
-        /* METRIC CARDS */
+        /* METRICS */
         div[data-testid="stMetric"] {
-            background-color: #1a1d26;
-            border: 1px solid #45a29e;
-            border-radius: 10px;
-            padding: 15px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
-            transition: 0.3s;
+            background-color: #1a1d26; border: 1px solid #45a29e; border-radius: 10px; padding: 15px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3); transition: 0.3s;
         }
-        div[data-testid="stMetric"]:hover {
-            border-color: #D4AF37;
-            transform: translateY(-2px);
-        }
-        div[data-testid="stMetricValue"] {
-            color: #D4AF37 !important; /* GOLD TEXT */
-            font-size: 2.2rem !important;
-            font-weight: 700;
-        }
-        div[data-testid="stMetricLabel"] {
-            color: #c5c6c7 !important;
-        }
+        div[data-testid="stMetric"]:hover { border-color: #D4AF37; transform: translateY(-2px); }
+        div[data-testid="stMetricValue"] { color: #D4AF37 !important; font-size: 2.2rem !important; font-weight: 700; }
+        div[data-testid="stMetricLabel"] { color: #c5c6c7 !important; }
 
-        /* DATAFRAME */
-        [data-testid="stDataFrame"] {
-            border: 1px solid #333;
-            background-color: #1a1d26;
-        }
-
-        /* TABS */
-        .stTabs [data-baseweb="tab-list"] {
-            gap: 10px;
-        }
-        .stTabs [data-baseweb="tab"] {
-            height: 50px;
-            background-color: #1f2833;
-            border-radius: 5px;
-            color: #c5c6c7;
-        }
-        .stTabs [aria-selected="true"] {
-            background-color: #D4AF37 !important;
-            color: #0b0c10 !important;
-            font-weight: bold;
-        }
+        /* DATAFRAME & TABS */
+        [data-testid="stDataFrame"] { border: 1px solid #333; background-color: #1a1d26; }
+        .stTabs [data-baseweb="tab-list"] { gap: 10px; }
+        .stTabs [data-baseweb="tab"] { height: 50px; background-color: #1f2833; border-radius: 5px; color: #c5c6c7; }
+        .stTabs [aria-selected="true"] { background-color: #D4AF37 !important; color: #0b0c10 !important; font-weight: bold; }
     </style>
 """, unsafe_allow_html=True)
 
-# --- 3. DATA LOADING (WITH FORCE REFRESH) ---
+# --- 3. DATA LOADING (CRASH PROOF) ---
 def get_data(force_refresh=False):
-    if force_refresh:
-        st.cache_data.clear()
+    if force_refresh: st.cache_data.clear()
     
     try:
-        # Load CSV
         file_path = "data/lcds_publications.csv"
-        if not os.path.exists(file_path):
-            return pd.DataFrame()
+        if not os.path.exists(file_path): return pd.DataFrame()
         
-        df = pd.read_csv(file_path)
+        # --- THE FIX: Skip bad lines to prevent crash ---
+        try:
+            df = pd.read_csv(file_path, on_bad_lines='skip', engine='python')
+        except:
+            # Fallback for older pandas versions
+            df = pd.read_csv(file_path, error_bad_lines=False, engine='python')
         
         # Ensure Critical Columns Exist
         req_cols = ['Date', 'Year', 'LCDS Author', 'Title', 'Journal', 'Type', 'Citations', 'DOI', 'Countries']
@@ -142,13 +96,11 @@ df = get_data()
 with st.sidebar:
     st.markdown("### 🔍 Filters")
     if df.empty:
-        st.error("📉 CSV is empty. Please check scraper.")
+        st.error("📉 CSV is empty or corrupted. Please run scraper.")
         st.stop()
         
-    # Time Filter
     period = st.radio("Time Period", ["All Time (2019+)", "Last 2 Years", "Last Year", "Last Month"], index=0)
     
-    # Calculate Date
     now = datetime.now()
     if "Month" in period: start = now - timedelta(days=30)
     elif "Year" in period and "2" not in period: start = now - timedelta(days=365)
@@ -156,11 +108,10 @@ with st.sidebar:
     else: start = pd.to_datetime("2019-09-01")
     
     df_filt = df[df['Date'] >= start].copy()
-    
     st.markdown("---")
     st.caption(f"Loaded **{len(df)}** records.")
 
-# --- 5. HEADER & METRICS ---
+# --- 5. DASHBOARD ---
 st.markdown('<div class="gold-header">Leverhulme Centre for Demographic Science</div>', unsafe_allow_html=True)
 st.markdown('<div class="sub-text">Tracking research output, citation impact, and global collaborations.</div>', unsafe_allow_html=True)
 
@@ -172,10 +123,9 @@ m4.metric("👥 Active Researchers", f"{df_filt['LCDS Author'].nunique()}")
 
 st.markdown("---")
 
-# --- 6. TABS ---
 tab1, tab2, tab3 = st.tabs(["📄 **Database**", "📊 **Impact Analytics**", "🌍 **Global Map**"])
 
-# === TAB 1: DATABASE ===
+# TAB 1: DATABASE
 with tab1:
     c_search, c_sort, c_dl = st.columns([3, 1, 1])
     search = c_search.text_input("Search", placeholder="Title, Author, or Journal...").lower()
@@ -192,34 +142,25 @@ with tab1:
     c_dl.markdown("<br>", unsafe_allow_html=True)
     c_dl.download_button("📥 Download CSV", view.to_csv(index=False).encode('utf-8'), "lcds_export.csv", "text/csv", use_container_width=True)
     
-    st.dataframe(
-        view[['Date', 'Citations', 'LCDS Author', 'Title', 'Journal', 'DOI']],
-        hide_index=True, use_container_width=True, height=600,
-        column_config={"DOI": st.column_config.LinkColumn("Link"), "Date": st.column_config.DateColumn("Date", format="YYYY-MM-DD")}
-    )
+    st.dataframe(view[['Date', 'Citations', 'LCDS Author', 'Title', 'Journal', 'DOI']], hide_index=True, use_container_width=True, height=600, column_config={"DOI": st.column_config.LinkColumn("Link"), "Date": st.column_config.DateColumn("Date", format="YYYY-MM-DD")})
 
-# === TAB 2: ANALYTICS ===
+# TAB 2: ANALYTICS
 with tab2:
     if not df_filt.empty:
         c1, c2 = st.columns(2)
-        
-        # TOP AUTHORS (Bar)
         with c1:
             st.markdown("### 🏆 Top Researchers (Impact)")
             top_auth = df_filt.groupby('LCDS Author')['Citations'].sum().sort_values(ascending=False).head(10).reset_index()
             fig = px.bar(top_auth, x='Citations', y='LCDS Author', orientation='h', text_auto=True, color='Citations', color_continuous_scale='Plasma')
             fig.update_layout(yaxis={'categoryorder':'total ascending', 'title': None}, xaxis={'title': None}, plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', font=dict(color='#c5c6c7'), coloraxis_showscale=False)
             st.plotly_chart(fig, use_container_width=True)
-            
-        # TOP JOURNALS (Bar)
         with c2:
             st.markdown("### 📰 Top Journals")
             top_jour = df_filt[~df_filt['Journal'].isin(['Preprint','Unknown'])].groupby('Journal')['Citations'].sum().sort_values(ascending=False).head(10).reset_index()
             fig = px.bar(top_jour, x='Citations', y='Journal', orientation='h', text_auto=True, color='Citations', color_continuous_scale='Viridis')
             fig.update_layout(yaxis={'categoryorder':'total ascending', 'title': None}, xaxis={'title': None}, plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', font=dict(color='#c5c6c7'), coloraxis_showscale=False)
             st.plotly_chart(fig, use_container_width=True)
-            
-        # TIMELINE (Area)
+        
         st.markdown("### 📈 Citation Growth")
         timeline = df_filt.groupby('Year')['Citations'].sum().reset_index()
         fig = px.area(timeline, x='Year', y='Citations', markers=True)
@@ -227,53 +168,25 @@ with tab2:
         fig.update_layout(plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', font=dict(color='#c5c6c7'), xaxis=dict(showgrid=False), yaxis=dict(showgrid=True, gridcolor='#333'))
         st.plotly_chart(fig, use_container_width=True)
 
-# === TAB 3: MAP ===
+# TAB 3: MAP
 with tab3:
     st.markdown("### 🌍 Global Impact Map")
-    
-    # Process Country Data
     if not df_filt.empty and 'Countries' in df_filt.columns:
-        # Filter rows with valid country data
         valid_map_data = df_filt[df_filt['Countries'].astype(str).str.len() > 1].copy()
-        
         if not valid_map_data.empty:
-            # Explode logic: "US,GB" -> 2 rows
             map_df = valid_map_data.assign(Country=valid_map_data['Countries'].astype(str).str.split(',')).explode('Country')
-            map_df['Country'] = map_df['Country'].str.strip()
-            map_df = map_df[map_df['Country'].str.len() == 2] # Keep only ISO codes
+            map_df = map_df[map_df['Country'].str.strip().str.len() == 2]
             
-            # Aggregate
-            map_stats = map_df.groupby('Country').agg({'Citations': 'sum', 'DOI': 'count'}).reset_index()
-            
-            # COORDINATE DICTIONARY (Major Research Hubs)
-            coords = {
-                'US': [37, -95], 'GB': [55, -3], 'CN': [35, 104], 'DE': [51, 10], 'FR': [46, 2], 'IT': [41, 12], 
-                'CA': [56, -106], 'AU': [-25, 133], 'NL': [52, 5], 'ES': [40, -3], 'SE': [60, 18], 'CH': [46, 8], 
-                'IN': [20, 78], 'BR': [-14, -51], 'ZA': [-30, 22], 'SG': [1.3, 103.8], 'JP': [36, 138], 
-                'KR': [35, 127], 'RU': [61, 105], 'BE': [50, 4], 'DK': [56, 9], 'IE': [53, -7], 'AT': [47, 14], 
-                'PL': [51, 19], 'CZ': [49, 15], 'PT': [39, -8], 'GR': [39, 21], 'TR': [39, 35], 'IL': [31, 34], 
-                'NZ': [-40, 174], 'MX': [23, -102], 'AR': [-38, -63], 'CL': [-35, -71], 'CO': [4, -74], 
-                'EG': [26, 30], 'NG': [9, 8], 'KE': [0, 37], 'SA': [23, 45], 'AE': [23, 53], 'IR': [32, 53], 
-                'PK': [30, 69], 'BD': [23, 90], 'TH': [15, 100], 'VN': [14, 108], 'ID': [-0, 113], 'MY': [4, 101]
-            }
-            
-            map_stats['lat'] = map_stats['Country'].map(lambda x: coords.get(x, [0,0])[0])
-            map_stats['lon'] = map_stats['Country'].map(lambda x: coords.get(x, [0,0])[1])
-            map_stats = map_stats[map_stats['lat'] != 0] # Filter unknown coords
-            
-            # Plot
-            fig = px.scatter_geo(
-                map_stats, lat="lat", lon="lon", size="Citations", hover_name="Country",
-                size_max=50, projection="natural earth", color="Citations", color_continuous_scale="Plasma"
-            )
-            fig.update_geos(
-                showcountries=True, countrycolor="#45a29e", showcoastlines=True, coastlinecolor="#45a29e",
-                landcolor="#0b0c10", showocean=False, bgcolor="rgba(0,0,0,0)"
-            )
-            fig.update_layout(margin={"r":0,"t":0,"l":0,"b":0}, paper_bgcolor="rgba(0,0,0,0)", geo_bgcolor="rgba(0,0,0,0)")
-            st.plotly_chart(fig, use_container_width=True)
-            
-        else:
-            st.info("🌍 No country data available for selected period. (Try 'All Time')")
-    else:
-        st.warning("⚠️ Country data is currently enriching in the background. Please click 'Force Reload' in a few minutes.")
+            if not map_df.empty:
+                map_stats = map_df.groupby('Country').agg({'Citations': 'sum'}).reset_index()
+                coords = {'US': [37, -95], 'GB': [55, -3], 'CN': [35, 104], 'DE': [51, 10], 'FR': [46, 2], 'IT': [41, 12], 'CA': [56, -106], 'AU': [-25, 133], 'NL': [52, 5], 'ES': [40, -3], 'SE': [60, 18], 'CH': [46, 8], 'IN': [20, 78], 'BR': [-14, -51], 'ZA': [-30, 22], 'SG': [1.3, 103.8], 'JP': [36, 138], 'KR': [35, 127], 'RU': [61, 105], 'BE': [50, 4], 'DK': [56, 9], 'IE': [53, -7], 'AT': [47, 14], 'PL': [51, 19], 'CZ': [49, 15], 'PT': [39, -8], 'GR': [39, 21], 'TR': [39, 35], 'IL': [31, 34], 'NZ': [-40, 174], 'MX': [23, -102], 'AR': [-38, -63], 'CL': [-35, -71], 'CO': [4, -74], 'EG': [26, 30], 'NG': [9, 8], 'KE': [0, 37], 'SA': [23, 45], 'AE': [23, 53], 'IR': [32, 53], 'PK': [30, 69], 'BD': [23, 90], 'TH': [15, 100], 'VN': [14, 108], 'ID': [-0, 113], 'MY': [4, 101]}
+                map_stats['lat'] = map_stats['Country'].map(lambda x: coords.get(x, [0,0])[0])
+                map_stats['lon'] = map_stats['Country'].map(lambda x: coords.get(x, [0,0])[1])
+                map_stats = map_stats[map_stats['lat'] != 0]
+                
+                fig = px.scatter_geo(map_stats, lat="lat", lon="lon", size="Citations", hover_name="Country", size_max=50, projection="natural earth", color="Citations", color_continuous_scale="Plasma")
+                fig.update_geos(showcountries=True, countrycolor="#45a29e", showcoastlines=True, coastlinecolor="#45a29e", landcolor="#0b0c10", showocean=False, bgcolor="rgba(0,0,0,0)")
+                fig.update_layout(margin={"r":0,"t":0,"l":0,"b":0}, paper_bgcolor="rgba(0,0,0,0)", geo_bgcolor="rgba(0,0,0,0)")
+                st.plotly_chart(fig, use_container_width=True)
+            else: st.info("No valid country data found.")
+        else: st.warning("⚠️ Country data is populating. Check back later.")
