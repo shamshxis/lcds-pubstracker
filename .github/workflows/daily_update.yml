@@ -2,18 +2,20 @@ name: Daily Publication Scraper
 
 on:
   schedule:
-    - cron: '0 4 * * *'  # Runs at 04:00 UTC daily
-  workflow_dispatch:      # Allows manual trigger button
+    - cron: '0 4 * * *'
+  workflow_dispatch:
 
 jobs:
   scrape-and-update:
     runs-on: ubuntu-latest
     permissions:
-      contents: write     # Required to push the CSV back to the repo
+      contents: write
     
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
+        with:
+          fetch-depth: 0 # Fetch all history for branches
 
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -21,18 +23,33 @@ jobs:
           python-version: '3.9'
 
       - name: Install dependencies
-        run: |
-          pip install requests beautifulsoup4 pandas plotly streamlit
+        run: pip install requests beautifulsoup4 pandas plotly streamlit
 
       - name: Run Scraper
         env:
-          USER_EMAIL: ${{ secrets.USER_EMAIL }} # Securely injected
+          USER_EMAIL: ${{ secrets.USER_EMAIL }}
         run: python scraper.py
 
-      - name: Commit and Push Data
+      - name: Push Data to Silent Branch
         run: |
+          # Configure Git
           git config --global user.name "GitHub Action"
           git config --global user.email "action@github.com"
+          
+          # 1. Stash the new CSV safely
+          cp data/lcds_publications.csv /tmp/lcds_publications.csv
+          
+          # 2. Try to checkout 'data' branch, or create it if missing (Orphan = empty branch)
+          git checkout data || git checkout --orphan data
+          
+          # 3. Clean the directory (so we don't duplicate code files in the data branch)
+          git rm -rf . || echo "Branch is empty, skipping removal"
+          
+          # 4. Bring the CSV back
+          mkdir -p data
+          cp /tmp/lcds_publications.csv data/lcds_publications.csv
+          
+          # 5. Commit and Push
           git add data/lcds_publications.csv
-          git commit -m "Auto-update publications data [skip ci]" || echo "No changes to commit"
-          git push
+          git commit -m "Auto-update data [skip ci]" || echo "No changes to commit"
+          git push origin data --force
