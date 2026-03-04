@@ -173,16 +173,71 @@ with c2:
 
 # 4. DATA TABLE
 st.subheader(f"📄 Recent Publications")
+
+# Select columns
 cols_to_show = ['Date Available Online', 'LCDS Author', 'Paper Title', 'Journal Name', 'Publication Type', 'Citation Count', 'DOI']
-st.dataframe(
-    df_filtered[cols_to_show],
-    column_config={
-        "DOI": st.column_config.LinkColumn("Link", display_text="Open Paper"),
-        "Date Available Online": st.column_config.DateColumn("Date", format="YYYY-MM-DD")
-    },
-    hide_index=True,
-    use_container_width=True
+# Ensure they exist
+final_cols = [c for c in cols_to_show if c in df_filtered.columns]
+
+# Create a display copy of the dataframe
+df_display = df_filtered[final_cols].copy()
+
+# 1. Turn DOI links into clickable HTML anchors
+if 'DOI' in df_display.columns:
+    df_display['DOI'] = df_display['DOI'].apply(lambda x: f'<a href="{x}" target="_blank">Link</a>' if str(x).startswith('http') else x)
+
+# 2. Convert to HTML and render with unsafe_allow_html=True
+# escape=False is CRITICAL: it tells pandas NOT to escape the tags, letting <i>Title</i> render as italic
+st.markdown(
+    df_display.to_html(escape=False, index=False), 
+    unsafe_allow_html=True
 )
+
+# Add some CSS to make this HTML table look like a Streamlit dataframe
+st.markdown("""
+<style>
+    table {
+        width: 100%;
+        border-collapse: collapse;
+        font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+        font-size: 0.9rem;
+        color: var(--text-color);
+        background-color: transparent;
+    }
+    th {
+        text-align: left;
+        background-color: rgba(0, 33, 71, 0.05); /* Very faint Oxford Blue */
+        padding: 10px;
+        border-bottom: 2px solid #ddd;
+        color: #002147;
+    }
+    /* Dark mode adjustment for headers */
+    @media (prefers-color-scheme: dark) {
+        th {
+            color: #FFD700; /* Gold */
+            background-color: rgba(255, 255, 255, 0.1);
+        }
+        td {
+            border-bottom: 1px solid #444;
+        }
+    }
+    td {
+        padding: 8px 10px;
+        border-bottom: 1px solid #eee;
+    }
+    tr:hover {
+        background-color: rgba(0,0,0,0.02);
+    }
+    a {
+        color: #0066cc;
+        text-decoration: none;
+        font-weight: bold;
+    }
+    a:hover {
+        text-decoration: underline;
+    }
+</style>
+""", unsafe_allow_html=True)
 
 # 5. FOOTER
 st.markdown("""
