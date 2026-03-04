@@ -1,45 +1,39 @@
-name: Daily Publication Scraper
+name: LCDS Scraper
 
 on:
   schedule:
-    - cron: '0 6 * * *'
-  workflow_dispatch:
+    - cron: '0 */12 * * *' # Every 12 hours
+  workflow_dispatch: # Allows manual run
 
 jobs:
-  scrape_and_update:
+  scrape-and-update:
     runs-on: ubuntu-latest
     permissions:
       contents: write
       
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-        
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.9'
-          
-      - name: Install Dependencies
-        run: |
-          pip install requests beautifulsoup4 pandas plotly streamlit
-          
-      - name: Run Scraper
-        run: python scraper.py
-        env:
-          USER_EMAIL: ${{ secrets.USER_EMAIL }}
-          
-      - name: Commit and Push Data
-        run: |
-          git config --global user.name "GitHub Action"
-          git config --global user.email "action@github.com"
-          
-          # Stage and commit
-          git add data/lcds_publications.csv
-          git commit -m "Auto-update: New publications data" || echo "No changes to commit"
-          
-          # 🛑 THE FIX: Pull latest changes before pushing to prevent errors
-          git pull --rebase origin main
-          
-          # Push changes
-          git push
+    - name: Checkout Code
+      uses: actions/checkout@v3
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+
+    - name: Install Dependencies
+      run: |
+        pip install requests beautifulsoup4 pandas lxml
+
+    - name: Run Scraper
+      env:
+        USER_EMAIL: ${{ secrets.USER_EMAIL }} # Add this to GitHub Secrets if you have one, or hardcode in scraper
+      run: |
+        python scraper.py
+
+    - name: Commit and Push
+      run: |
+        git config --global user.name "GitHub Action"
+        git config --global user.email "action@github.com"
+        git add data/lcds_publications.csv
+        git commit -m "Auto-update publications data" || echo "No changes to commit"
+        git push
