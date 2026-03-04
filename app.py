@@ -3,7 +3,7 @@ import pandas as pd
 import plotly.express as px
 from datetime import datetime, timedelta
 
-# --- PAGE CONFIGURATION ---
+# --- 1. PAGE CONFIGURATION ---
 st.set_page_config(
     page_title="LCDS Impact Tracker",
     page_icon="🎓",
@@ -11,17 +11,20 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# --- TRENDY & DARK-MODE FRIENDLY CSS ---
+# --- 2. CUSTOM CSS (Branding, Dark Mode, Scrollable Table) ---
 st.markdown("""
     <style>
-        /* 1. Dynamic Headers (Auto-adapts to Dark/Light Mode) */
+        /* Import Google Font for the Table */
+        @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap');
+
+        /* DYNAMIC HEADERS (Auto-adapts to Dark/Light Mode) */
         h1, h2, h3 {
             font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
             font-weight: 700;
             letter-spacing: -0.5px;
         }
         
-        /* 2. Trendy Gradient Subheading */
+        /* TRENDY GRADIENT SUBHEADING */
         .trendy-sub {
             background: linear-gradient(90deg, #002147 0%, #C49102 100%); /* Oxford Blue -> Gold */
             -webkit-background-clip: text;
@@ -41,7 +44,7 @@ st.markdown("""
             }
         }
 
-        /* 3. Footer Styling */
+        /* FOOTER STYLING */
         .footer {
             position: fixed;
             left: 0;
@@ -65,32 +68,117 @@ st.markdown("""
         .block-container {
             padding-bottom: 80px;
         }
+
+        /* SCROLLABLE TABLE CONTAINER */
+        .table-container {
+            max-height: 500px;       /* Fixed height */
+            overflow-y: auto;        /* Vertical scrollbar */
+            overflow-x: hidden;      /* Hide horizontal scroll */
+            border: 1px solid #ddd;
+            border-radius: 8px;      /* Rounded corners */
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            background-color: white;
+        }
+
+        /* TABLE STYLING */
+        .styled-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-family: 'Roboto', sans-serif;
+            font-size: 0.9rem;
+            color: #333;
+        }
+
+        /* Sticky Header */
+        .styled-table thead tr th {
+            position: sticky;
+            top: 0;
+            background-color: #002147; /* Oxford Blue */
+            color: #ffffff;
+            text-align: left;
+            padding: 12px 15px;
+            font-weight: 500;
+            z-index: 1;
+        }
+
+        /* Row Styling */
+        .styled-table tbody tr {
+            border-bottom: 1px solid #eeeeee;
+        }
+        .styled-table tbody tr:nth-of-type(even) {
+            background-color: #f9f9f9; /* Light gray striping */
+        }
+        .styled-table tbody tr:hover {
+            background-color: #f1f1f1;
+        }
+        .styled-table td {
+            padding: 10px 15px;
+        }
+
+        /* Link Styling inside table */
+        .styled-table a {
+            color: #0066cc;
+            text-decoration: none;
+            font-weight: 600;
+            border-bottom: 1px dotted #0066cc;
+        }
+        .styled-table a:hover {
+            color: #003366;
+            border-bottom: 1px solid #003366;
+        }
+
+        /* DARK MODE ADJUSTMENTS FOR TABLE */
+        @media (prefers-color-scheme: dark) {
+            .table-container {
+                background-color: #1E1E1E;
+                border: 1px solid #444;
+            }
+            .styled-table {
+                color: #ddd;
+            }
+            .styled-table thead tr th {
+                background-color: #2b2b2b;
+                color: #FFD700; /* Gold Header Text */
+                border-bottom: 2px solid #444;
+            }
+            .styled-table tbody tr {
+                border-bottom: 1px solid #333;
+            }
+            .styled-table tbody tr:nth-of-type(even) {
+                background-color: #252525;
+            }
+            .styled-table tbody tr:hover {
+                background-color: #333;
+            }
+            .styled-table a {
+                color: #4da6ff;
+                border-bottom: 1px dotted #4da6ff;
+            }
+        }
     </style>
 """, unsafe_allow_html=True)
 
-# --- LOAD DATA (FROM SILENT BRANCH) ---
+# --- 3. LOAD DATA (FROM SILENT BRANCH) ---
 @st.cache_data(ttl=3600)
 def load_data():
     # URL to your raw CSV on the data branch
-    # REPLACE 'shamshxis' and 'lcds-pubstracker' if needed!
     url = "https://raw.githubusercontent.com/shamshxis/lcds-pubstracker/data/data/lcds_publications.csv"
     
     try:
         df = pd.read_csv(url)
         
-        # 1. Define EXPECTED columns
+        # Define EXPECTED columns & force them to exist
         expected_cols = [
             'Date Available Online', 'LCDS Author', 'All Authors', 'DOI', 
             'Paper Title', 'Journal Name', 'Journal Area', 
             'Year of Publication', 'Citation Count', 'Publication Type'
         ]
         
-        # 2. FORCE columns to exist
         for col in expected_cols:
             if col not in df.columns:
                 df[col] = "Unknown" if col != 'Citation Count' else 0
 
-        # 3. Clean Data Types
+        # Clean Data Types
         df['Date Available Online'] = pd.to_datetime(df['Date Available Online'], errors='coerce')
         df['Citation Count'] = pd.to_numeric(df['Citation Count'], errors='coerce').fillna(0)
         df['Journal Area'] = df['Journal Area'].fillna('Pending (Recent)')
@@ -102,7 +190,7 @@ def load_data():
 
 df = load_data()
 
-# --- SIDEBAR FILTERS ---
+# --- 4. SIDEBAR FILTERS ---
 st.sidebar.title("🔍 Filters")
 
 if df.empty:
@@ -129,16 +217,16 @@ selected_types = st.sidebar.multiselect("Publication Type", pub_types, default=p
 mask = (df['Date Available Online'] >= start_date) & (df['Publication Type'].isin(selected_types))
 df_filtered = df[mask].copy()
 
-# --- MAIN DASHBOARD ---
+# --- 5. MAIN DASHBOARD ---
 
-# 1. HEADER
+# HEADER
 st.title("Leverhulme Centre for Demographic Science")
 st.markdown('<div class="trendy-sub">Measuring our impact across the years.</div>', unsafe_allow_html=True)
 
 st.markdown(f"**Viewing:** {time_filter} | **Records Found:** {len(df_filtered)}")
 st.divider()
 
-# 2. METRICS
+# METRICS
 col1, col2, col3, col4 = st.columns(4)
 total_cites = int(df_filtered['Citation Count'].sum())
 preprint_count = len(df_filtered[df_filtered['Publication Type'] == 'Preprint'])
@@ -150,7 +238,7 @@ col4.metric("Active Authors", df_filtered['LCDS Author'].nunique())
 
 st.divider()
 
-# 3. VISUALS
+# VISUALS
 c1, c2 = st.columns(2)
 with c1:
     st.subheader("📊 Impact by Field")
@@ -171,122 +259,29 @@ with c2:
                   title="Journals vs. Preprints", color_discrete_sequence=px.colors.qualitative.Safe)
     st.plotly_chart(fig2, use_container_width=True)
 
-# 4. DATA TABLE
+# --- 6. SCROLLABLE DATA TABLE ---
 st.subheader(f"📄 Recent Publications")
 
-# Select columns
+# Select & Format Columns
 cols_to_show = ['Date Available Online', 'LCDS Author', 'Paper Title', 'Journal Name', 'Publication Type', 'Citation Count', 'DOI']
 final_cols = [c for c in cols_to_show if c in df_filtered.columns]
-
-# Create display copy
 df_display = df_filtered[final_cols].copy()
 
-# 1. Turn DOI links into clickable HTML anchors
+# Turn DOI links into clickable HTML anchors
 if 'DOI' in df_display.columns:
     df_display['DOI'] = df_display['DOI'].apply(lambda x: f'<a href="{x}" target="_blank">View</a>' if str(x).startswith('http') else x)
 
-# 2. Convert to HTML (escape=False allows tags to render)
+# Convert to HTML (escape=False allows formatting tags like <i> to render)
 html_table = df_display.to_html(escape=False, index=False, border=0, classes="styled-table")
 
-# 3. Render with Custom CSS wrapper for Scrollbars & Google Fonts
+# Render Table inside Scrollable Container
 st.markdown(f"""
-    <style>
-        /* Import Google Font */
-        @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;500&display=swap');
-
-        /* Scrollable Container */
-        .table-container {{
-            max-height: 500px;       /* Fixed height */
-            overflow-y: auto;        /* Vertical scrollbar */
-            overflow-x: hidden;      /* Hide horizontal scroll */
-            border: 1px solid #ddd;
-            border-radius: 8px;      /* Rounded corners */
-            box-shadow: 0 2px 4px rgba(0,0,0,0.05); /* Subtle shadow */
-        }}
-
-        /* Table Styling */
-        .styled-table {{
-            width: 100%;
-            border-collapse: collapse;
-            font-family: 'Roboto', sans-serif; /* Google Font */
-            font-size: 0.85rem;      /* Small, professional size */
-        }}
-
-        /* Sticky Header */
-        .styled-table thead tr th {{
-            position: sticky;
-            top: 0;
-            background-color: #002147; /* Oxford Blue */
-            color: #ffffff;
-            text-align: left;
-            padding: 12px 15px;
-            font-weight: 500;
-            z-index: 1; /* Keeps header on top of content */
-        }}
-
-        /* Row Styling */
-        .styled-table tbody tr {{
-            border-bottom: 1px solid #eeeeee;
-        }}
-        
-        .styled-table tbody tr:nth-of-type(even) {{
-            background-color: rgba(0,0,0,0.02); /* Zebra striping */
-        }}
-        
-        .styled-table tbody tr:hover {{
-            background-color: rgba(0, 33, 71, 0.05); /* Hover effect */
-            transition: background-color 0.2s ease-in-out;
-        }}
-
-        .styled-table td {{
-            padding: 10px 15px;
-            color: var(--text-color);
-        }}
-
-        /* Link Styling */
-        .styled-table a {{
-            color: #0066cc;
-            text-decoration: none;
-            font-weight: 600;
-            border-bottom: 1px dotted #0066cc;
-        }}
-        .styled-table a:hover {{
-            color: #003366;
-            border-bottom: 1px solid #003366;
-        }}
-
-        /* Dark Mode Adjustments */
-        @media (prefers-color-scheme: dark) {{
-            .styled-table thead tr th {{
-                background-color: #1E1E1E;
-                color: #FFD700; /* Gold Header Text */
-                border-bottom: 2px solid #333;
-            }}
-            .styled-table tbody tr {{
-                border-bottom: 1px solid #333;
-            }}
-            .styled-table tbody tr:nth-of-type(even) {{
-                background-color: rgba(255,255,255,0.05);
-            }}
-            .styled-table tbody tr:hover {{
-                background-color: rgba(255,255,255,0.1);
-            }}
-            .styled-table a {{
-                color: #4da6ff;
-                border-bottom: 1px dotted #4da6ff;
-            }}
-            .table-container {{
-                border: 1px solid #444;
-            }}
-        }}
-    </style>
-
     <div class="table-container">
         {html_table}
     </div>
 """, unsafe_allow_html=True)
 
-# 5. FOOTER
+# --- 7. FOOTER ---
 st.markdown("""
     <div class="footer">
         Certified University of Oxford 2026 - All Rights Reserved. | 
