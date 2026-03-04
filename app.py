@@ -54,7 +54,7 @@ def load_data():
     if not os.path.exists(file_path): return pd.DataFrame()
     
     try:
-        # Load with error skipping
+        # Load with error skipping to prevent crashes
         try:
             df = pd.read_csv(file_path, on_bad_lines='skip', engine='python')
         except:
@@ -152,9 +152,9 @@ with tab1:
     elif "Cited" in sort: view = view.sort_values("Citations", ascending=False)
     elif "Author" in sort: view = view.sort_values("LCDS Author")
     
-    # Download Button (Restored & Prominent)
+    # Download Button
     with c_dl:
-        st.markdown("<div style='height: 28px'></div>", unsafe_allow_html=True) # Spacer align
+        st.markdown("<div style='height: 28px'></div>", unsafe_allow_html=True)
         if not view.empty:
             st.download_button(
                 label="📥 Download View (CSV)",
@@ -205,7 +205,8 @@ with tab2:
         timeline = df_filt.groupby('Year')['Citations'].sum().reset_index()
         if not timeline.empty:
             fig = px.area(timeline, x='Year', y='Citations', markers=True)
-            fig.update_traces(line_color='#D4AF37', fill_color='rgba(212, 175, 55, 0.3)')
+            # FIX: Use fillcolor instead of fill_color
+            fig.update_traces(line_color='#D4AF37', fillcolor='rgba(212, 175, 55, 0.3)')
             fig.update_layout(plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', font=dict(color='#c5c6c7'), xaxis=dict(showgrid=False), yaxis=dict(showgrid=True, gridcolor='#333'))
             st.plotly_chart(fig, use_container_width=True)
 
