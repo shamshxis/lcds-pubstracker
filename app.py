@@ -3,36 +3,43 @@ import pandas as pd
 import plotly.express as px
 from datetime import datetime, timedelta
 
+# --- 1. PAGE CONFIG ---
 st.set_page_config(page_title="LCDS Research Impact", page_icon="🎓", layout="wide", initial_sidebar_state="expanded")
 
-# --- CSS ---
+# --- 2. CSS (Minimal/Safe) ---
 st.markdown("""
     <style>
+        .main-header { font-family: 'Helvetica Neue', sans-serif; font-size: 2.5rem; font-weight: 700; color: #002147; }
+        .sub-header { color: #555; font-size: 1.1rem; border-bottom: 1px solid #ddd; padding-bottom: 15px; margin-bottom: 25px; }
         .footer { margin-top: 50px; padding-top: 20px; border-top: 1px solid #ddd; text-align: center; color: #888; font-size: 0.8rem; }
     </style>
 """, unsafe_allow_html=True)
 
-# --- LOAD DATA ---
+# --- 3. LOAD DATA (Robust) ---
 @st.cache_data(ttl=3600)
 def load_data():
     try:
         df = pd.read_csv("data/lcds_publications.csv")
         req = ['Date', 'Year', 'LCDS Author', 'Title', 'Journal', 'Type', 'Citations', 'DOI', 'Field', 'Countries']
+        
+        # Heal Missing Columns
         for c in req:
             if c not in df.columns:
                 if c == 'Citations': df[c] = 0
                 elif c == 'Year': df[c] = datetime.now().year
                 else: df[c] = "Unknown" if c != 'Countries' else ""
         
+        # Enforce Numeric Types for Analytics
         df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
         df['Year'] = pd.to_numeric(df['Year'], errors='coerce').fillna(0).astype(int)
         df['Citations'] = pd.to_numeric(df['Citations'], errors='coerce').fillna(0)
+        
         return df
     except: return pd.DataFrame()
 
 df = load_data()
 
-# --- SIDEBAR ---
+# --- 4. SIDEBAR ---
 st.sidebar.image("https://upload.wikimedia.org/wikipedia/commons/thumb/f/f2/University_of_Oxford.svg/1200px-University_of_Oxford.svg.png", width=120)
 st.sidebar.title("Filters")
 
@@ -50,27 +57,28 @@ else: start = pd.to_datetime("2019-09-01")
 
 df_filt = df[df['Date'] >= start].copy()
 
-# --- MAIN ---
-st.title("Leverhulme Centre for Demographic Science")
-st.markdown("Tracking research impact, preprints, and global collaborations.")
+# --- 5. DASHBOARD HEADER & METRICS ---
+st.markdown('<div class="main-header">Leverhulme Centre for Demographic Science</div>', unsafe_allow_html=True)
+st.markdown('<div class="sub-header">Tracking research impact, preprints, and global collaborations.</div>', unsafe_allow_html=True)
 
+# NATIVE METRICS (No CSS glitches)
 c1, c2, c3, c4 = st.columns(4)
-c1.metric("Publications", len(df_filt))
-c2.metric("Citations", int(df_filt['Citations'].sum()))
-c3.metric("Preprints", len(df_filt[df_filt['Type']=="Preprint"]))
-c4.metric("Active Researchers", df_filt['LCDS Author'].nunique())
+c1.metric("📚 Publications", len(df_filt))
+c2.metric("💬 Total Citations", int(df_filt['Citations'].sum()))
+c3.metric("📝 Preprints", len(df_filt[df_filt['Type']=="Preprint"]))
+c4.metric("👥 Active Researchers", df_filt['LCDS Author'].nunique())
 
 st.divider()
 
-# --- TABS ---
+# --- 6. TABS ---
 tab1, tab2, tab3 = st.tabs(["📄 Publications List", "📊 Analytics", "🌍 Global Reach"])
 
+# TAB 1: LIST
 with tab1:
     c1, c2 = st.columns([3, 1])
     with c1: search = st.text_input("🔍 Search", placeholder="Title, Author, or Journal...").lower()
     with c2: sort = st.selectbox("Sort By", ["Newest First", "Oldest First", "Most Cited", "Title A-Z"])
 
-    # Search Logic
     if search:
         df_view = df_filt[
             df_filt['Title'].str.lower().str.contains(search, na=False) |
@@ -78,13 +86,11 @@ with tab1:
         ].copy()
     else: df_view = df_filt.copy()
 
-    # Sort Logic
     if "Newest" in sort: df_view = df_view.sort_values("Date", ascending=False)
     elif "Oldest" in sort: df_view = df_view.sort_values("Date", ascending=True)
     elif "Cited" in sort: df_view = df_view.sort_values("Citations", ascending=False)
     elif "Title" in sort: df_view = df_view.sort_values("Title", ascending=True)
 
-    # Dynamic Download Button
     st.caption(f"Showing {len(df_view)} publications.")
     st.download_button("📥 Download This View (CSV)", df_view.to_csv(index=False).encode('utf-8'), "lcds_view.csv", "text/csv")
 
@@ -99,27 +105,31 @@ with tab1:
         hide_index=True, use_container_width=True, height=600
     )
 
+# TAB 2: ANALYTICS
 with tab2:
     c1, c2 = st.columns(2)
     with c1:
         if not df_filt.empty:
             st.subheader("Citations per Year")
-            st.plotly_chart(px.bar(df_filt.groupby('Year')['Citations'].sum().reset_index(), x='Year', y='Citations', color_discrete_sequence=['#002147']), use_container_width=True)
+            # Aggregation ensures numeric types
+            stats = df_filt.groupby('Year')['Citations'].sum().reset_index()
+            st.plotly_chart(px.bar(stats, x='Year', y='Citations', color_discrete_sequence=['#002147']), use_container_width=True)
     with c2:
         if not df_filt.empty:
             f_col = 'Journal' if "Pending" in df_filt['Field'].unique() else 'Field'
             st.subheader(f"By {f_col}")
             st.plotly_chart(px.pie(df_filt[f_col].value_counts().head(10).reset_index(), values='count', names=f_col, hole=0.4, color_discrete_sequence=px.colors.qualitative.Prism), use_container_width=True)
 
+# TAB 3: GLOBAL MAP
 with tab3:
     st.subheader("Global Citation Impact")
     st.markdown("Pins represent countries where our co-authored papers have been cited/published.")
     
     if not df_filt.empty and 'Countries' in df_filt.columns:
         try:
-            # Explode countries logic
             df_ex = df_filt.assign(Country=df_filt['Countries'].astype(str).str.split(',')).explode('Country')
             df_ex['Country'] = df_ex['Country'].str.strip()
+            # Keep only valid ISO codes (length 2)
             df_ex = df_ex[df_ex['Country'].str.len() == 2]
 
             if not df_ex.empty:
