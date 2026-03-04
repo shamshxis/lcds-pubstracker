@@ -7,14 +7,15 @@ from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # --- CONFIGURATION ---
-# (Securely loads your email from GitHub Secrets)
+# Loads email from Secrets, defaults to a placeholder if missing
 mailto = os.environ.get('USER_EMAIL', 'research_team@example.com')
-HEADERS = {'User-Agent': f'LCDS-Pubs-Tracker/2.0 (mailto:{mailto})'}
-
-# --- HELPER FUNCTIONS ---
+HEADERS = {
+    'User-Agent': f'LCDS-Pubs-Tracker/2.0 (mailto:{mailto})',
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8'
+}
 
 def get_staff_list():
-    """Scrapes staff names using the specific h3.paragraph-side-title tag."""
+    """Scrapes staff names, handling whitespace and newlines in HTML."""
     url = "https://www.demography.ox.ac.uk/people"
     print(f"[{datetime.now().time()}] Fetching staff list from {url}...")
     
@@ -24,14 +25,20 @@ def get_staff_list():
         res.raise_for_status()
         soup = BeautifulSoup(res.text, 'html.parser')
         
-        # SPECIFIC SELECTOR: h3 with class paragraph-side-title
+        # TARGETED SELECTOR: h3 with class 'paragraph-side-title'
         for el in soup.select('h3.paragraph-side-title'):
-            n = el.get_text(strip=True)
-            # Ensure it's a real name (at least 2 words, e.g., "Jane Doe")
-            if n and len(n.split()) >= 2: 
-                names.add(n)
+            # .get_text(strip=True) removes leading/trailing whitespace & newlines
+            raw_name = el.get_text(strip=True)
+            
+            # Clean up: sometimes titles like "Dr." or "Prof." stick around
+            # We want just the name for the API search. 
+            # (OpenAlex is smart, but cleaner is better)
+            clean_name = raw_name.replace('Dr ', '').replace('Prof ', '').strip()
+            
+            if clean_name and len(clean_name.split()) >= 2: 
+                names.add(clean_name)
         
-        # Manual additions for known missing people if strictly required
+        # Manually add anyone who might be missing due to different HTML formatting
         names.add("Ursula Gazeley")
         names.add("Melinda Mills")
         
@@ -41,10 +48,11 @@ def get_staff_list():
 
     except Exception as e:
         print(f"[ERROR] Failed to scrape staff: {e}")
-        return []
+        # Return fallback list so the script continues
+        return ["Ursula Gazeley", "Melinda Mills"]
 
 def fetch_openalex_data(name):
-    """Fetches works and formats them into the exact 9 columns requested."""
+    """Fetches works and formats them into the exact 9 columns."""
     works = []
     try:
         # 1. Get Author ID
@@ -55,10 +63,10 @@ def fetch_openalex_data(name):
         results = r.json().get('results', [])
         if not results: return []
         
-        # Use the first result as the primary ID
+        # Use first result
         author_id = results[0]['id']
         
-        # 2. Get Works (Filter: Author ID + Published > 2018)
+        # 2. Get Works
         url_works = "https://api.openalex.org/works"
         filter_str = f"author.id:{author_id},publication_year:>2018"
         params_works = {'filter': filter_str, 'per-page': 200}
@@ -68,15 +76,9 @@ def fetch_openalex_data(name):
         if rw.status_code == 200:
             items = rw.json().get('results', [])
             for item in items:
-                # --- DATA MAPPING ---
-                
-                # 3. All Authors string
                 authorships = item.get('authorships', [])
                 all_authors = [a.get('author', {}).get('display_name', 'Unknown') for a in authorships]
-                all_authors_str = ", ".join(all_authors)
                 
-                # 7. Journal Area (The "Field" from OpenAlex Topics)
-                # Defaults to "Multidisciplinary" if undefined
                 topic = "Multidisciplinary"
                 if item.get('primary_topic'):
                     topic = item['primary_topic'].get('field', {}).get('display_name', 'Multidisciplinary')
@@ -84,7 +86,7 @@ def fetch_openalex_data(name):
                 works.append({
                     'Date Available Online': item.get('publication_date'),
                     'LCDS Author': name,
-                    'All Authors': all_authors_str,
+                    'All Authors': ", ".join(all_authors),
                     'DOI': item.get('doi'),
                     'Paper Title': item.get('display_name'),
                     'Journal Name': item.get('primary_location', {}).get('source', {}).get('display_name') or "Preprint/Other",
@@ -98,32 +100,31 @@ def fetch_openalex_data(name):
 
 # --- MAIN EXECUTION ---
 if __name__ == "__main__":
+    os.makedirs("data", exist_ok=True)
+    
     staff = get_staff_list()
     
-    if not staff:
-        print("No staff found. Aborting.")
-        exit()
-
     all_data = []
-    # Run in parallel to speed up processing
-    with ThreadPoolExecutor(max_workers=5) as executor:
-        future_to_name = {executor.submit(fetch_openalex_data, n): n for n in staff}
-        for future in as_completed(future_to_name):
-            data = future.result()
-            if data:
-                all_data.extend(data)
+    if staff:
+        # ThreadPool for speed
+        with ThreadPoolExecutor(max_workers=5) as executor:
+            future_to_name = {executor.submit(fetch_openalex_data, n): n for n in staff}
+            for future in as_completed(future_to_name):
+                data = future.result()
+                if data:
+                    all_data.extend(data)
 
+    # Always create CSV (even if empty) to satisfy GitHub Action
     if all_data:
         df = pd.DataFrame(all_data)
-        
-        # Deduplicate: If the same DOI appears twice (e.g. co-authored by two LCDS staff), 
-        # keep the first one but you might want to aggregate "LCDS Author" if needed. 
-        # For now, simple deduplication by DOI:
+        # Deduplicate by DOI
         df = df.sort_values('Citation Count', ascending=False).drop_duplicates(subset=['DOI'], keep='first')
-        
-        # Save to CSV
-        os.makedirs("data", exist_ok=True)
         df.to_csv("data/lcds_publications.csv", index=False)
-        print(f"Successfully saved {len(df)} records to data/lcds_publications.csv")
+        print(f"Saved {len(df)} records.")
     else:
-        print("No records found.")
+        print("No records found. Creating empty CSV.")
+        # Create empty dataframe with correct columns
+        pd.DataFrame(columns=[
+            'Date Available Online', 'LCDS Author', 'All Authors', 'DOI', 
+            'Paper Title', 'Journal Name', 'Journal Area', 'Year of Publication', 'Citation Count'
+        ]).to_csv("data/lcds_publications.csv", index=False)
