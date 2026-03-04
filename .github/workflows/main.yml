@@ -3,7 +3,7 @@ name: LCDS Scraper
 on:
   schedule:
     - cron: '0 */12 * * *' # Every 12 hours
-  workflow_dispatch:
+  workflow_dispatch: # Allows manual run
 
 jobs:
   update-data:
@@ -12,21 +12,32 @@ jobs:
       contents: write
       
     steps:
-    - uses: actions/checkout@v3
-    
-    - uses: actions/setup-python@v4
+    - name: Checkout Code
+      uses: actions/checkout@v3
+      with:
+        fetch-depth: 0 # Ensures we pull full history to avoid conflicts
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
       with:
         python-version: '3.9'
-        
-    - run: pip install requests pandas beautifulsoup4 plotly streamlit lxml
-    
+
+    - name: Install Dependencies
+      run: |
+        pip install requests pandas beautifulsoup4 plotly streamlit lxml
+
     - name: Run Scraper
       run: python scraper.py
-      
-    - name: Commit
+
+    - name: Commit and Push
       run: |
-        git config --global user.name "Auto-Updater"
-        git config --global user.email "bot@github.com"
+        git config --global user.name "GitHub Action"
+        git config --global user.email "action@github.com"
         git add data/lcds_publications.csv
-        git commit -m "Update data" || echo "No changes"
-        git push
+        # Commit changes if any
+        git commit -m "Auto-update publications data" || echo "No changes to commit"
+        
+        # THE FIX: Pull latest changes from remote and rebase before pushing
+        git pull --rebase origin main
+        
+        git push origin main
