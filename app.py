@@ -73,7 +73,7 @@ with st.sidebar:
     
     # Sidebar Footer
     st.markdown("<br><br><br><br>", unsafe_allow_html=True)
-    st.caption("- Leverhulme Centre for Demographic Science - University of Oxford (2026).")
+    st.caption("LCDS Publications Tracker v1.")
 
 now = datetime.now()
 if "Week" in period: start = now - timedelta(days=7)
@@ -192,4 +192,4 @@ with tab3:
                 st.warning("⚠️ Country data is still populating. The scraper is fetching it row-by-row. Refresh later.")
 
 # --- MAIN FOOTER ---
-st.markdown('<div class="footer">- Leverhulme Centre for Demographic Science - University of Oxford (2026).</div>', unsafe_allow_html=True)
+st.markdown('<div class="footer">Leverhulme Centre for Demographic Science - University of Oxford (2026)</div>', unsafe_allow_html=True)
