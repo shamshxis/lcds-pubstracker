@@ -4,124 +4,85 @@ import plotly.express as px
 import plotly.io as pio
 from datetime import datetime, timedelta
 
-# --- 1. CONFIG & THEME SETUP ---
+# --- 1. PAGE CONFIGURATION ---
 st.set_page_config(
-    page_title="LCDS Impact Tracker", 
-    page_icon="🎓", 
-    layout="wide", 
+    page_title="LCDS Impact Tracker",
+    page_icon="🎓",
+    layout="wide",
     initial_sidebar_state="expanded"
 )
+
+# Force Plotly to use a dark theme that matches our CSS
 pio.templates.default = "plotly_dark"
 
-# --- 2. PROFESSIONAL DARK MODE CSS ---
+# --- 2. SAFE DARK MODE CSS ---
+# This CSS purely recolors existing elements. It does not inject new HTML structures.
 st.markdown("""
     <style>
-        /* MAIN BACKGROUND & TEXT */
-        [data-testid="stAppViewContainer"] {
+        /* 1. Main Backgrounds */
+        .stApp {
             background-color: #0E1117;
-            color: #E0E0E0;
+            color: #FAFAFA;
         }
         [data-testid="stSidebar"] {
-            background-color: #12141C;
-            border-right: 1px solid #2B2F3B;
-        }
-        
-        /* TYPOGRAPHY */
-        h1, h2, h3, p, div { font-family: 'Inter', sans-serif; }
-        
-        /* GRADIENT HEADERS */
-        .main-header { 
-            font-size: 3rem; 
-            font-weight: 800; 
-            background: linear-gradient(90deg, #FFD700 0%, #FFFFFF 100%); 
-            -webkit-background-clip: text; 
-            -webkit-text-fill-color: transparent; 
-            margin-bottom: 0.5rem;
-            text-shadow: 0px 0px 20px rgba(255, 215, 0, 0.2);
-        }
-        .sub-header { 
-            color: #A0AEC0; 
-            font-size: 1.1rem;
-            font-weight: 400;
-            padding-bottom: 1.5rem; 
-            border-bottom: 1px solid #2B2F3B;
-            margin-bottom: 2rem; 
-        }
-        
-        /* METRIC CARDS (Glassmorphism) */
-        div[data-testid="stMetric"] {
-            background-color: #1A1C24;
-            border: 1px solid #2B2F3B;
-            border-radius: 12px;
-            padding: 20px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
-            transition: transform 0.2s;
-        }
-        div[data-testid="stMetric"]:hover {
-            transform: translateY(-2px);
-            border-color: #FFD700;
-        }
-        div[data-testid="stMetricValue"] { 
-            color: #FFD700 !important; /* Gold */
-            font-size: 2.2rem !important;
-            font-weight: 700 !important;
-        }
-        div[data-testid="stMetricLabel"] {
-            color: #A0AEC0 !important;
-            font-size: 1rem !important;
+            background-color: #161B22;
+            border-right: 1px solid #30363D;
         }
 
-        /* TABS STYLING */
-        button[data-baseweb="tab"] {
-            background-color: transparent !important;
-            color: #A0AEC0 !important;
-            font-weight: 600;
-            border-radius: 5px;
-            margin: 0 5px;
+        /* 2. Typography - Gold & Silver */
+        h1, h2, h3 {
+            font-family: 'Helvetica Neue', sans-serif;
+            color: #E6EDF3 !important;
         }
-        button[data-baseweb="tab"][aria-selected="true"] {
-            background-color: #1A1C24 !important;
-            color: #FFD700 !important;
-            border: 1px solid #FFD700 !important;
+        h1 {
+            background: linear-gradient(90deg, #D4AF37, #E6EDF3);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            font-weight: 800;
+        }
+        
+        /* 3. Metrics Cards - Clean Dark Look */
+        [data-testid="stMetric"] {
+            background-color: #21262D;
+            border: 1px solid #30363D;
+            border-radius: 8px;
+            padding: 15px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        }
+        [data-testid="stMetricLabel"] {
+            color: #8B949E !important;
+        }
+        [data-testid="stMetricValue"] {
+            color: #D4AF37 !important; /* Oxford Gold */
+            font-size: 24px !important;
         }
 
-        /* DATAFRAME & UI ELEMENTS */
+        /* 4. Tables & Dataframes */
         [data-testid="stDataFrame"] {
-            border: 1px solid #2B2F3B;
-            border-radius: 10px;
-            background-color: #1A1C24;
+            border: 1px solid #30363D;
         }
         
-        /* INPUT FIELDS */
-        .stTextInput > div > div > input {
-            background-color: #1A1C24;
-            color: white;
-            border: 1px solid #2B2F3B;
-        }
-        .stSelectbox > div > div > div {
-            background-color: #1A1C24;
-            color: white;
-        }
-
-        /* FOOTER */
-        .footer {
+        /* 5. Sidebar Elements */
+        .stRadio > label { color: #E6EDF3 !important; }
+        
+        /* 6. Footer Styling (Simple Text) */
+        .footer-text {
             text-align: center;
-            color: #555;
-            font-size: 0.85rem;
-            margin-top: 80px;
-            padding-top: 20px;
-            border-top: 1px solid #2B2F3B;
+            color: #484F58;
+            font-size: 12px;
+            margin-top: 50px;
         }
     </style>
 """, unsafe_allow_html=True)
 
-# --- 3. LOAD DATA ---
+# --- 3. LOAD DATA (Robust) ---
 @st.cache_data(ttl=3600)
 def load_data():
     try:
         df = pd.read_csv("data/lcds_publications.csv")
-        cols = ['Date', 'Year', 'LCDS Author', 'Title', 'Journal', 'Type', 'Citations', 'DOI', 'Countries']
-        for c in cols:
+        # Ensure all columns exist to prevent crashes
+        required_cols = ['Date', 'Year', 'LCDS Author', 'Title', 'Journal', 'Type', 'Citations', 'DOI', 'Countries']
+        for c in required_cols:
             if c not in df.columns:
                 if c == 'Citations': df[c] = 0
                 elif c == 'Year': df[c] = datetime.now().year
@@ -135,25 +96,24 @@ def load_data():
 
 df = load_data()
 
-# --- 4. SIDEBAR ---
+# --- 4. SIDEBAR FILTERS ---
 with st.sidebar:
-    st.image("https://upload.wikimedia.org/wikipedia/commons/thumb/f/f2/University_of_Oxford.svg/1200px-University_of_Oxford.svg.png", width=140)
-    st.markdown("## 📊 **Filters**")
+    st.image("https://upload.wikimedia.org/wikipedia/commons/thumb/f/f2/University_of_Oxford.svg/1200px-University_of_Oxford.svg.png", width=120)
+    st.markdown("### 🔍 **Filters**")
     
     if df.empty:
-        st.error("Data missing. Please run scraper.")
+        st.error("Data is initializing... Please run the scraper.")
         st.stop()
 
-    # Styled Radio Button
     period = st.radio(
-        "📅 **Time Period**", 
+        "Time Period", 
         ["All Time (2019+)", "Last 2 Years", "Last Year", "Last Month", "Last Week"]
     )
     
-    st.markdown("---")
-    st.info("Tracking publications, preprints, and global citation impact.")
+    st.divider()
+    st.info("Tracking publications, preprints, and global reach.")
 
-# Logic
+# Filter Logic
 now = datetime.now()
 if "Week" in period: start = now - timedelta(days=7)
 elif "Month" in period: start = now - timedelta(days=30)
@@ -163,39 +123,43 @@ else: start = pd.to_datetime("2019-09-01")
 
 df_filt = df[df['Date'] >= start].copy()
 
-# --- 5. DASHBOARD HEADER ---
-st.markdown('<div class="main-header">Leverhulme Centre for Demographic Science</div>', unsafe_allow_html=True)
-st.markdown('<div class="sub-header">Real-time tracking of research output, citation impact, and global reach.</div>', unsafe_allow_html=True)
+# --- 5. MAIN DASHBOARD ---
+st.title("Leverhulme Centre for Demographic Science")
+st.markdown("##### Real-time tracking of research output, citation impact, and global collaborations.")
+st.markdown("---")
 
-# METRICS ROW
+# METRICS
 c1, c2, c3, c4 = st.columns(4)
-c1.metric("📚 Publications", f"{len(df_filt):,}")
-c2.metric("💬 Total Citations", f"{int(df_filt['Citations'].sum()):,}")
-c3.metric("📝 Preprints", f"{len(df_filt[df_filt['Type'].str.contains('Preprint', case=False, na=False)]):,}")
-c4.metric("👥 Active Researchers", f"{df_filt['LCDS Author'].nunique()}")
+c1.metric("Publications", f"{len(df_filt):,}")
+c2.metric("Total Citations", f"{int(df_filt['Citations'].sum()):,}")
+c3.metric("Preprints", f"{len(df_filt[df_filt['Type'].str.contains('Preprint', case=False, na=False)]):,}")
+c4.metric("Active Researchers", f"{df_filt['LCDS Author'].nunique()}")
 
 st.markdown("<br>", unsafe_allow_html=True)
 
 # --- 6. TABS ---
-tab1, tab2, tab3 = st.tabs(["📄 **Publications Database**", "📊 **Impact Analytics**", "🌍 **Global Map**"])
+tab1, tab2, tab3 = st.tabs(["📄 Publications Database", "📊 Impact Analytics", "🌍 Global Map"])
 
-# === TAB 1: LIST ===
+# === TAB 1: DATA TABLE ===
 with tab1:
-    col1, col2, col3 = st.columns([3, 1, 1])
-    with col1: search = st.text_input("🔍 Search Database", placeholder="Search by Title, Author, or Journal...").lower()
-    with col2: sort = st.selectbox("Sort Data", ["Newest First", "Oldest First", "Most Cited", "Author (A-Z)"])
+    c_search, c_sort, c_down = st.columns([3, 1, 1])
     
+    with c_search:
+        search = st.text_input("Search", placeholder="Title, Author, or Journal...").lower()
+    with c_sort:
+        sort = st.selectbox("Sort", ["Newest First", "Most Cited", "Author (A-Z)"])
+    
+    # Filter & Sort
     view = df_filt.copy()
     if search:
         view = view[view['Title'].str.lower().str.contains(search, na=False) | view['LCDS Author'].str.lower().str.contains(search, na=False)]
     
     if "Newest" in sort: view = view.sort_values("Date", ascending=False)
-    elif "Oldest" in sort: view = view.sort_values("Date", ascending=True)
     elif "Cited" in sort: view = view.sort_values("Citations", ascending=False)
     elif "Author" in sort: view = view.sort_values("LCDS Author")
 
-    with col3:
-        st.markdown("<div class='align-bottom'></div>", unsafe_allow_html=True)
+    with c_down:
+        st.markdown("<div style='height: 28px'></div>", unsafe_allow_html=True) # Spacer
         st.download_button("📥 Download CSV", view.to_csv(index=False).encode('utf-8'), "lcds_data.csv", "text/csv", use_container_width=True)
 
     st.dataframe(
@@ -204,84 +168,61 @@ with tab1:
         use_container_width=True,
         height=600,
         column_config={
-            "DOI": st.column_config.LinkColumn("Link", display_text="Open Paper"),
+            "DOI": st.column_config.LinkColumn("Link", display_text="Open"),
             "Date": st.column_config.DateColumn("Date", format="YYYY-MM-DD"),
-            "Citations": st.column_config.NumberColumn("Cites", format="%d"),
-            "Title": st.column_config.TextColumn("Title", width="large"),
+            "Title": st.column_config.TextColumn("Title", width="large")
         }
     )
 
 # === TAB 2: ANALYTICS ===
 with tab2:
     if not df_filt.empty:
-        c1, c2 = st.columns(2)
+        col1, col2 = st.columns(2)
         
         # CHART 1: TOP AUTHORS
-        with c1:
-            st.markdown("### 🏆 Top Researchers (by Citations)")
-            auth = df_filt.groupby('LCDS Author')['Citations'].sum().sort_values(ascending=False).head(10).reset_index()
+        with col1:
+            st.subheader("🏆 Top Researchers (Impact)")
+            auth_stats = df_filt.groupby('LCDS Author')['Citations'].sum().sort_values(ascending=False).head(10).reset_index()
             
-            # Plasma Gradient for Bars (Purple -> Orange -> Yellow)
-            fig = px.bar(
-                auth, x='Citations', y='LCDS Author', orientation='h', 
-                color='Citations', 
-                color_continuous_scale='Plasma', 
-                text_auto=True
+            fig_auth = px.bar(
+                auth_stats, x='Citations', y='LCDS Author', orientation='h', 
+                color='Citations', color_continuous_scale='Plasma', text_auto=True
             )
-            fig.update_layout(
-                yaxis={'categoryorder':'total ascending', 'title': None}, 
-                xaxis={'title': None},
-                plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
-                font=dict(color="#E0E0E0"),
-                coloraxis_showscale=False
-            )
-            st.plotly_chart(fig, use_container_width=True)
-            
-        # CHART 2: TOP JOURNALS
-        with c2:
-            st.markdown("### 📰 High-Impact Journals")
-            jour = df_filt[~df_filt['Journal'].isin(['Preprint','Unknown'])].groupby('Journal')['Citations'].sum().sort_values(ascending=False).head(10).reset_index()
-            
-            # Viridis Gradient for Journals
-            fig = px.bar(
-                jour, x='Citations', y='Journal', orientation='h', 
-                color='Citations', 
-                color_continuous_scale='Viridis',
-                text_auto=True
-            )
-            fig.update_layout(
-                yaxis={'categoryorder':'total ascending', 'title': None}, 
-                xaxis={'title': None},
-                plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
-                font=dict(color="#E0E0E0"),
-                coloraxis_showscale=False
-            )
-            st.plotly_chart(fig, use_container_width=True)
+            fig_auth.update_layout(yaxis={'categoryorder':'total ascending', 'title': None}, xaxis={'title': None}, coloraxis_showscale=False)
+            st.plotly_chart(fig_auth, use_container_width=True)
 
-        # CHART 3: CITATION TIMELINE
-        st.markdown("### 📈 Citation Velocity")
+        # CHART 2: TOP JOURNALS
+        with col2:
+            st.subheader("📰 Top Journals (Impact)")
+            jour_stats = df_filt[~df_filt['Journal'].isin(['Preprint','Unknown'])].groupby('Journal')['Citations'].sum().sort_values(ascending=False).head(10).reset_index()
+            
+            fig_jour = px.bar(
+                jour_stats, x='Citations', y='Journal', orientation='h', 
+                color='Citations', color_continuous_scale='Viridis', text_auto=True
+            )
+            fig_jour.update_layout(yaxis={'categoryorder':'total ascending', 'title': None}, xaxis={'title': None}, coloraxis_showscale=False)
+            st.plotly_chart(fig_jour, use_container_width=True)
+
+        # CHART 3: TIMELINE
+        st.subheader("📈 Citation Growth")
         time_stats = df_filt.groupby('Year')['Citations'].sum().reset_index()
         fig_time = px.area(
             time_stats, x='Year', y='Citations', 
-            markers=True,
-            color_discrete_sequence=['#FFD700'] # Pure Gold Line
+            markers=True, color_discrete_sequence=['#D4AF37']
         )
-        fig_time.update_layout(
-            plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
-            font=dict(color="#E0E0E0"),
-            xaxis=dict(showgrid=False), yaxis=dict(showgrid=True, gridcolor="#333")
-        )
+        fig_time.update_layout(xaxis=dict(showgrid=False), yaxis=dict(showgrid=True, gridcolor='#30363D'))
         st.plotly_chart(fig_time, use_container_width=True)
 
 # === TAB 3: MAP ===
 with tab3:
-    st.markdown("### 🌍 Global Impact Map")
-    st.caption("Locations of institutions collaborating with or citing LCDS research.")
+    st.subheader("🌍 Global Collaboration & Impact")
     
     if not df_filt.empty and 'Countries' in df_filt.columns:
+        # Check for valid country data
         if df_filt['Countries'].astype(str).str.len().sum() > 5:
             df_ex = df_filt.assign(Country=df_filt['Countries'].astype(str).str.split(',')).explode('Country')
             df_ex['Country'] = df_ex['Country'].str.strip()
+            # Valid ISO code check
             df_ex = df_ex[df_ex['Country'].str.len() == 2]
             
             if not df_ex.empty:
@@ -294,29 +235,24 @@ with tab3:
                 stats['lon'] = stats['Country'].map(lambda x: coords.get(x, [0,0])[1])
                 stats = stats[stats['lat'] != 0]
                 
-                # Dark Matter Map Style
+                # Dark Map Styling
                 fig = px.scatter_geo(
                     stats, lat="lat", lon="lon", size="Citations", hover_name="Country", 
                     size_max=50, projection="natural earth", 
-                    color="Citations", 
-                    color_continuous_scale="Plasma" # Pops against dark map
+                    color="Citations", color_continuous_scale="Plasma"
                 )
                 fig.update_geos(
                     showcountries=True, countrycolor="#444", 
                     showcoastlines=True, coastlinecolor="#444", 
-                    landcolor="#1E1E1E", showocean=False, 
+                    landcolor="#0D1117", showocean=False, 
                     bgcolor="rgba(0,0,0,0)"
                 )
-                fig.update_layout(
-                    margin={"r":0,"t":10,"l":0,"b":10}, 
-                    paper_bgcolor="rgba(0,0,0,0)", geo_bgcolor="rgba(0,0,0,0)",
-                    font=dict(color="white")
-                )
+                fig.update_layout(margin={"r":0,"t":0,"l":0,"b":0}, paper_bgcolor="rgba(0,0,0,0)", geo_bgcolor="rgba(0,0,0,0)")
                 st.plotly_chart(fig, use_container_width=True)
             else:
-                st.info("No valid country data found in selection.")
+                st.info("No valid country data found in current selection.")
         else:
-            st.warning("⚠️ Country data is populating in background. Check back later.")
+            st.warning("⚠️ Country data is populating. Check back later.")
 
 # --- FOOTER ---
-st.markdown("<div class='footer'>© Leverhulme Centre for Demographic Science - University of Oxford</div>", unsafe_allow_html=True)
+st.markdown("<p class='footer-text'>© Leverhulme Centre for Demographic Science - University of Oxford</p>", unsafe_allow_html=True)
