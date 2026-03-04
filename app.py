@@ -52,6 +52,7 @@ def load_data():
         df['Date Available Online'] = pd.to_datetime(df['Date Available Online'], errors='coerce')
         df['Citation Count'] = pd.to_numeric(df['Citation Count'], errors='coerce').fillna(0)
         df['Year'] = pd.to_numeric(df['Year'], errors='coerce').fillna(datetime.now().year)
+        if 'Country' not in df.columns: df['Country'] = "Global"
         return df
     except: return pd.DataFrame()
 
@@ -123,23 +124,38 @@ with col1:
         st.plotly_chart(fig, use_container_width=True)
     else: st.info("No citation data available.")
 
-# Chart 2: Doughnut Chart (Citations by Journal)
+# Chart 2: Doughnut Chart (Citations by Journal - Dashboard Style)
 with col2:
     st.subheader("🍩 Top Journals by Impact")
-    # Group by Journal and sum citations
+    
+    # Process Data
     df_journal = df_filtered.groupby('Journal Name')['Citation Count'].sum().reset_index()
-    # Filter out 0 citations to keep chart clean and sort
     df_journal = df_journal[df_journal['Citation Count'] > 0].sort_values('Citation Count', ascending=False)
     
-    # Optional: Take top 15 to prevent clutter, group rest as "Other" could be done but usually top 10-15 is enough
-    if not df_journal.empty:
-        # Use Pastel color sequence which pops against dark mode
-        fig_donut = px.pie(df_journal.head(15), values='Citation Count', names='Journal Name', 
-                           title="Citations per Journal (Top 15)",
-                           hole=0.6, 
+    # Limit to Top 10 for clean "Outside Label" look
+    top_journals = df_journal.head(10)
+    
+    if not top_journals.empty:
+        # Create Dynamic Pull (Pop the first slice)
+        pull_list = [0.05 if i==0 else 0 for i in range(len(top_journals))]
+        
+        fig_donut = px.pie(top_journals, values='Citation Count', names='Journal Name', 
+                           title="Citations per Journal (Top 10)",
+                           hole=0.7, # Thinner modern ring
                            color_discrete_sequence=px.colors.qualitative.Pastel)
-        fig_donut.update_layout(height=350, showlegend=False) # Hide legend to save space, rely on hover
-        fig_donut.update_traces(textposition='inside', textinfo='percent+label')
+        
+        fig_donut.update_traces(
+            textposition='outside', 
+            textinfo='label+percent',
+            pull=pull_list
+        )
+        
+        fig_donut.update_layout(
+            height=350, 
+            showlegend=False, # Hide legend for cleaner dashboard look
+            margin=dict(t=40, b=20, l=20, r=20)
+        )
+        
         st.plotly_chart(fig_donut, use_container_width=True)
     else: st.info("No citation data available by journal.")
 
@@ -165,7 +181,7 @@ st.dataframe(
 # Footer
 st.markdown("""
     <div class="footer">
-        © Leverhulme Centre for Demographic Science - University of Oxford 2026 - All Rights Reserved. | 
+        © University of Oxford 2026 - All Rights Reserved. | 
         <a href="https://www.demography.ox.ac.uk" target="_blank">demography.ox.ac.uk</a>
     </div>
 """, unsafe_allow_html=True)
