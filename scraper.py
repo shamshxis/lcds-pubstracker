@@ -8,14 +8,10 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # --- CONFIGURATION ---
 mailto = os.environ.get('USER_EMAIL', 'research_team@example.com')
-HEADERS = {'User-Agent': f'LCDS-Tracker/6.0 (mailto:{mailto})'}
+HEADERS = {'User-Agent': f'LCDS-Tracker/7.0 (mailto:{mailto})'}
 
-# --- 1. ROBUST STAFF DISCOVERY ---
+# --- 1. STAFF DISCOVERY (Based on your HTML file) ---
 def get_staff_list():
-    """
-    Scrapes LCDS website using a 'Density Check' to find names.
-    This avoids relying on specific CSS tags that might change.
-    """
     print(f"[{datetime.now().time()}] 🔍 Scanning LCDS website...")
     url = "https://www.demography.ox.ac.uk/people"
     names = set()
@@ -24,57 +20,51 @@ def get_staff_list():
         res = requests.get(url, headers=HEADERS, timeout=30)
         soup = BeautifulSoup(res.text, 'html.parser')
         
-        # STRATEGY: Grab every likely name container
-        # We look for h3 tags (often used for names) and links inside content divs
-        potential_names = []
-        
-        # 1. H3 Tags (Most common for profiles)
-        for h3 in soup.find_all('h3'):
-            potential_names.append(h3.get_text(strip=True))
+        # 1. Primary Grid Selector (From your HTML file structure)
+        # Look for the specific Drupal views structure
+        for span in soup.select('div.views-field-title span.field-content'):
+            text = span.get_text(strip=True)
+            if text: names.add(text)
             
-        # 2. Links inside 'view-content' or 'grid' divs
-        for div in soup.find_all('div', class_=lambda x: x and ('view' in x or 'grid' in x)):
-            for a in div.find_all('a'):
-                text = a.get_text(strip=True)
-                if len(text) > 3: potential_names.append(text)
+        # 2. Backup Selector (Side titles)
+        for h3 in soup.select('h3.paragraph-side-title'):
+            names.add(h3.get_text(strip=True))
 
-        # CLEANING & FILTERING
+        # 3. Clean & Validate
         clean_names = set()
-        for raw in potential_names:
-            # Remove Titles
+        for raw in names:
+            # Remove titles
             clean = raw.replace('Dr ', '').replace('Prof ', '').replace('Professor ', '').strip()
             
-            # Junk Filter (Navigation terms)
-            junk = ["View profile", "Read more", "Contact", "Email", "Research", "Team", "Profile", "News", "Events"]
+            # Junk Filter
+            junk = ["View profile", "Read more", "Contact", "Email", "Research", "Team", "Profile"]
             if any(x.lower() in clean.lower() for x in junk): continue
             
-            # Validation: Must be 2+ words, no numbers, < 40 chars
+            # Must look like a name
             if len(clean.split()) >= 2 and len(clean) < 40 and not any(char.isdigit() for char in clean):
                 clean_names.add(clean)
 
-        # HARDCODED SAFETY NET (Ensure these key people are NEVER missed)
-        clean_names.add("Melinda Mills")
-        clean_names.add("Jennifer Dowd")
-        clean_names.add("Thomas Rawson") # Zoology/Epi
-        clean_names.add("Per Block")
-        clean_names.add("Ridhu Kashyap")
+        # 4. HARDCODED LEADS (Never miss these)
+        # Andrew Stephen added explicitly to ensure we check him against the new logic
+        key_people = ["Melinda Mills", "Jennifer Dowd", "Thomas Rawson", "Per Block", "Andrew Stephen", "Ridhu Kashyap"]
+        for p in key_people:
+            clean_names.add(p)
         
         final_list = sorted(list(clean_names))
-        print(f"✅ Found {len(final_list)} potential researchers.")
+        print(f"✅ Found {len(final_list)} researchers.")
         return final_list
 
     except Exception as e:
         print(f"❌ Scrape error: {e}")
-        # Fallback if site is down
-        return ["Melinda Mills", "Jennifer Dowd", "Thomas Rawson"]
+        return ["Melinda Mills", "Jennifer Dowd", "Andrew Stephen"]
 
-# --- 2. ORCID WITH "SMART AFFILIATION" ---
+# --- 2. ORCID WITH "TOPIC & AFFILIATION FIREWALL" ---
 def get_orcid(name):
     """
-    3-STEP VERIFICATION:
-    1. OXFORD CHECK: Must have 'Oxford' in affiliation history.
-    2. TOPIC CHECK: Must match Demography, Sociology, Zoology (for Rawson), etc.
-    3. BAN CHECK: Kills Engineers (Wen Su) and Admins (Louise).
+    STRICT FILTER:
+    - Must be Oxford Affiliated.
+    - Must match Research Keywords (Demography, Sociology, Marketing, etc).
+    - Must NOT match pure Clinical/Engineering keywords (Cancer, Surgery).
     """
     try:
         r = requests.get("https://api.openalex.org/authors", params={'search': name}, headers=HEADERS, timeout=10)
@@ -82,46 +72,44 @@ def get_orcid(name):
             results = r.json().get('results', [])
             
             for person in results:
-                # Get all affiliation info
+                # Get affiliation history
                 affils = [a.get('institution', {}).get('display_name', '').lower() for a in person.get('affiliations', [])]
                 last_known = person.get('last_known_institution', {}).get('display_name', '').lower()
                 affils.append(last_known)
-                
-                # Get Topics (Works count in specific fields)
-                # (OpenAlex provides a 'x_concepts' or similar summary sometimes, but we stick to text for speed)
                 full_text = " ".join(affils)
                 
-                # --- RULE 1: MUST BE OXFORD ---
+                # --- RULE 1: THE OXFORD CONNECTION ---
                 if "oxford" not in full_text: continue
                 
-                # --- RULE 2: RELEVANT FIELDS ---
-                # Added 'zoology' specifically for Thomas Rawson
-                valid_topics = [
+                # --- RULE 2: THE TOPIC WHITELIST (Expanded for Andrew Stephen) ---
+                valid_keywords = [
                     "demographic", "sociology", "nuffield", "leverhulme", 
                     "population", "social policy", "zoology", "economics", 
-                    "epidemiology", "public health", "statistics"
+                    "epidemiology", "public health", "statistics",
+                    "marketing", "business", "consumer", "saïd", "management" # Added for Andrew Stephen
                 ]
-                if not any(t in full_text for t in valid_topics): continue
+                if not any(k in full_text for k in valid_keywords): continue
                 
-                # --- RULE 3: BAN LIST (Admins & Engineers) ---
-                # "Wen Su" (Engineer) -> Banned
-                # "Louise Allcock" (Admin) -> Banned
-                ban_list = [
-                    "civil engineering", "materials science", "structural", 
-                    "administrator", "coordinator", "finance", "assistant", "manager"
+                # --- RULE 3: THE BANLIST (Admins, Engineers, Pure Clinical) ---
+                ban_keywords = [
+                    "administrator", "coordinator", "finance", 
+                    "civil engineering", "materials science", 
+                    "oncology", "surgery", "cancer research", "clinical medicine" # Added to block the wrong Andrew Stephen
                 ]
-                # Exception: If they explicitly say "Demography", ignore the ban (e.g. a Manager of Demography)
-                if any(b in full_text for b in ban_list) and "demographic" not in full_text:
-                    continue
                 
-                # If passed all checks
+                # Exception: If they have "demography" or "marketing" (for Andrew) in title, ignore ban
+                is_banned = any(b in full_text for b in ban_keywords)
+                has_override = any(x in full_text for x in ["demographic", "marketing", "saïd"])
+                
+                if is_banned and not has_override:
+                    continue 
+                
                 return person['orcid'].replace('https://orcid.org/', '')
-                
     except: pass
     print(f"   ❌ Skipping {name} (No valid Researcher ORCID found)")
     return None
 
-# --- 3. FETCH WORKS (Your Proven Logic) ---
+# --- 3. FETCH WORKS (Unchanged) ---
 def standardize_date(date_parts):
     try:
         if not date_parts: return None
@@ -135,7 +123,7 @@ def fetch_works(name, orcid):
     works = []
     if not orcid: return []
     try:
-        # Crossref First + Created Date (Proven to catch recent papers)
+        # Crossref First + Created Date Priority
         url = f"https://api.crossref.org/works?filter=orcid:{orcid},from-pub-date:2019-09-01&sort=created&order=desc&rows=100"
         r = requests.get(url, headers=HEADERS, timeout=30)
         if r.status_code == 200:
@@ -168,14 +156,14 @@ def fetch_works(name, orcid):
 # --- 4. ENRICH (Map Data) ---
 def safe_enrich(df):
     if df.empty: return df
-    print(f"[{datetime.now().time()}] 🧠 Enriching data for map...")
+    print(f"[{datetime.now().time()}] 🧠 Enriching data...")
     try:
         dois = df['DOI'].str.replace('https://doi.org/', '').tolist()
         doi_map = {}
         
         def chunker(seq, size): return (seq[pos:pos + size] for pos in range(0, len(seq), size))
         
-        for chunk in chunker(dois, 30):
+        for chunk in chunker(dois, 40):
             try:
                 f = "|".join([f"doi:https://doi.org/{d}" for d in chunk])
                 url = f"https://api.openalex.org/works?filter={f}&per-page=50&select=doi,primary_topic,authorships"
@@ -209,7 +197,6 @@ if __name__ == "__main__":
     staff = get_staff_list()
     
     all_data = []
-    # 5 workers to be safe
     with ThreadPoolExecutor(max_workers=5) as exc:
         futures = {exc.submit(fetch_works, n, get_orcid(n)): n for n in staff}
         for f in as_completed(futures):
@@ -220,7 +207,6 @@ if __name__ == "__main__":
         df = pd.DataFrame(all_data)
         df = df.sort_values('Date', ascending=False).drop_duplicates('DOI')
         df.to_csv("data/lcds_publications.csv", index=False)
-        
         df = safe_enrich(df)
         df.to_csv("data/lcds_publications.csv", index=False)
         print(f"✅ SUCCESS: Saved {len(df)} records.")
