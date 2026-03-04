@@ -73,7 +73,7 @@ with st.sidebar:
     
     # Sidebar Footer
     st.markdown("<br><br><br><br>", unsafe_allow_html=True)
-    st.caption("LCDS Publications Tracker v1.")
+    st.caption("LCDS Pubs Tracker v1.0.")
 
 now = datetime.now()
 if "Week" in period: start = now - timedelta(days=7)
