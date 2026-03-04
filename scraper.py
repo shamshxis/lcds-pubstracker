@@ -1,365 +1,512 @@
-import requests
-from bs4 import BeautifulSoup
-import pandas as pd
 import os
+import re
 import time
 from datetime import datetime
-import re
+from typing import Dict, List, Optional, Tuple
+
+import pandas as pd
+import requests
+from bs4 import BeautifulSoup
 
 # --- CONFIGURATION ---
-mailto = os.environ.get('USER_EMAIL', 'research_tracker@ox.ac.uk')
-HEADERS = {'User-Agent': f'LCDS-Tracker/12.0 (mailto:{mailto})'}
+mailto = os.environ.get("USER_EMAIL", "research_tracker@ox.ac.uk")
+HEADERS = {"User-Agent": f"LCDS-Tracker/12.1 (mailto:{mailto})"}
+
+PEOPLE_URL = os.environ.get(
+    "PEOPLE_URL",
+    "https://www.demography.ox.ac.uk/people",
+)
+
 CSV_FILE = "data/lcds_publications.csv"
-START_DATE = "2019-09-01"
+START_DATE = os.environ.get("START_DATE", "2019-09-01")
 
-# --- 1. STAFF DISCOVERY & ADMIN FILTERING ---
-def get_staff_list():
-    print(f"[{datetime.now().time()}] 🔍 Scanning LCDS website.")
-    url = "https://www.demography.ox.ac.uk/people"
-    names = set()
+# When names are ambiguous, do not guess an ORCID unless Oxford + LCDS evidence is strong.
+STRICT_DISAMBIGUATION = os.environ.get("STRICT_DISAMBIGUATION", "1") != "0"
 
-    # Explicit exclusions (Admin / Non-research)
-    blocklist = ["hamza shams", "louise allcock", "admin", "administrator"]
+# --- KEYWORDS ---
+ADMIN_KEYWORDS = {
+    "administrator", "administration", "admin", "finance", "hr", "operations",
+    "events", "communications", "comms", "outreach", "assistant", "pa",
+    "personal assistant", "coordinator", "manager", "executive", "support",
+    "web", "it", "systems", "data manager", "project manager"
+}
 
-    # Core researchers to guarantee inclusion
-    leads = ["Melinda Mills", "Jennifer Dowd", "Thomas Rawson", "Per Block", "Andrew Stephen", "Ridhu Kashyap", "Charles Rahal"]
-    for l in leads:
-        names.add(l)
+FORMER_KEYWORDS = {
+    "previously", "former", "past", "alumni", "ex-", "was", "until"
+}
 
-    admin_keywords = [
-        "admin", "administrator", "manager", "coordinator", "officer", "assistant",
-        "communications", "support", "hr", "finance", "alumni"
-    ]
+# Affiliation vocabulary for scoring and validation
+OXFORD_TERMS = {
+    "university of oxford", "oxford", "ox.ac.uk", "oxford population health",
+    "nuffield department of population health", "ndph", "demographic science unit",
+    "dunn school", "department of sociology", "oxford martin"
+}
+LCDS_TERMS = {
+    "leverhulme centre for demographic science", "lcds", "leverhulme centre for demography",
+    "leverhulme centre for demographic", "leverhulme centre", "demography.ox.ac.uk"
+}
 
-    def _is_current_member(position_text: str) -> bool:
-        if not position_text:
-            return True
-        t = position_text.strip().lower()
+DOMAIN_TERMS = {
+    "demograph", "population", "fertil", "mortali", "migration", "family",
+    "epidemiolog", "public health", "health", "ageing", "aging",
+    "inequal", "computational", "statistic", "social", "sociolog",
+    "econom", "policy", "survey"
+}
 
-        # Exclude obvious former-member patterns visible on the People page
-        if "previously" in t:
-            return False
-        if re.search(r"\b(19|20)\d{2}\s*[-–]\s*(19|20)\d{2}\b", t):
-            return False
-        if "lcds postdoc" in t or "lcds dphil" in t:
-            # Many former members are listed with a current external role plus prior LCDS role
-            if "previously" in t or "(" in t:
-                return False
 
+# --- HELPERS ---
+def _norm(s: str) -> str:
+    s = (s or "").strip().lower()
+    s = re.sub(r"\s+", " ", s)
+    return s
+
+
+def _name_tokens(name: str) -> List[str]:
+    n = _norm(name)
+    n = re.sub(r"[^a-z\s\-']", " ", n)
+    n = re.sub(r"\s+", " ", n).strip()
+    toks = [t for t in n.split(" ") if t]
+    return toks
+
+
+def _is_high_risk_name(name: str) -> bool:
+    toks = _name_tokens(name)
+    if len(toks) <= 2:
         return True
+    # Very short given name + common surname heuristic
+    if len(toks) == 2 and (len(toks[0]) <= 3 or len(toks[1]) <= 3):
+        return True
+    return False
 
+
+def normalize_doi(doi: Optional[str]) -> Optional[str]:
+    if not doi:
+        return None
+    d = doi.strip().lower()
+    d = d.replace("https://doi.org/", "").replace("http://doi.org/", "")
+    d = d.replace("doi:", "")
+    d = d.strip()
+    return d or None
+
+
+def _contains_any(haystack: str, needles: set) -> bool:
+    h = _norm(haystack)
+    return any(n in h for n in needles)
+
+
+def _extract_year_range(text: str) -> bool:
+    """
+    Detects patterns like 2019-2022 or 2019 – 2022 etc.
+    """
+    t = _norm(text)
+    return bool(re.search(r"\b(19|20)\d{2}\s*[\-–]\s*(19|20)\d{2}\b", t))
+
+
+def _safe_get(url: str, params: Optional[dict] = None, timeout: int = 30) -> Optional[requests.Response]:
     try:
-        res = requests.get(url, headers=HEADERS, timeout=30)
-        res.raise_for_status()
-        soup = BeautifulSoup(res.text, "html.parser")
+        r = requests.get(url, params=params, headers=HEADERS, timeout=timeout)
+        return r
+    except Exception:
+        return None
 
-        for card in soup.select(".views-row"):
-            card_text = card.get_text(separator=" ", strip=True).lower()
 
-            # Skip admin/support cards
-            if any(k in card_text for k in admin_keywords):
-                continue
+# --- 1. STAFF DISCOVERY ---
+def get_staff_list() -> List[str]:
+    """
+    Scrapes CURRENT people from demography.ox.ac.uk People page.
 
-            # Name selector based on the current card markup in the People page HTML
-            name_el = card.select_one("h3.paragraph-side-title")
-            if not name_el:
-                # Fallback to older selector if Drupal theme changes again
-                name_el = card.select_one("div.views-field-title span.field-content")
-            if not name_el:
-                continue
+    The current markup uses:
+      - each person card in .views-row
+      - name in h3.paragraph-side-title
+      - role/position in .field--name-field-position
 
-            raw_name = name_el.get_text(strip=True)
-            clean = raw_name.replace("Dr ", "").replace("Prof ", "").replace("Professor ", "").strip()
-            clean_lower = clean.lower()
+    Falls back to older selectors if needed.
+    """
+    leads: List[str] = []
 
-            if any(b in clean_lower for b in blocklist):
-                continue
-            if len(clean.split()) < 2 or len(clean) > 40:
-                continue
-
-            # Pull position text to drop former members reliably
-            pos_el = card.select_one(".field--name-field-position")
-            position_text = pos_el.get_text(" ", strip=True) if pos_el else ""
-            if not _is_current_member(position_text):
-                continue
-
-            names.add(clean)
-
-        final_list = sorted(list(names))
-        print(f"✅ Found {len(final_list)} current people (Admin/Support staff excluded).")
-        return final_list
-
-    except Exception as e:
-        print(f"❌ Scrape error: {e}")
+    r = _safe_get(PEOPLE_URL, timeout=30)
+    if not r or r.status_code != 200:
+        print(f"❌ Could not fetch People page: {PEOPLE_URL}")
         return leads
 
-# --- 2. STRICT ORCID FILTER ---
-def get_orcid(name):
-    """Find best-matching ORCID for a person name.
+    soup = BeautifulSoup(r.text, "html.parser")
+    cards = soup.select(".view-content .views-row") or soup.select(".views-row")
 
-    Priority:
-      1) Crossref works search (extract ORCID from author blocks)
-      2) OpenAlex author search as a fallback
+    for card in cards:
+        # Name
+        name_el = card.select_one("h3.paragraph-side-title")
+        if not name_el:
+            # fallback older selector
+            name_el = card.select_one("div.views-field-title span.field-content")
 
-    OpenAlex is used only to validate Oxford/LCDS affiliation and to fill gaps.
+        name = _norm(name_el.get_text(" ", strip=True) if name_el else "")
+        if not name:
+            continue
+
+        # Role / position (used to skip administrators and former members)
+        pos_el = card.select_one(".field--name-field-position")
+        position = _norm(pos_el.get_text(" ", strip=True) if pos_el else "")
+
+        # Former / previously LCDS etc
+        if position and (_contains_any(position, FORMER_KEYWORDS) or _extract_year_range(position)):
+            continue
+
+        # Admin / support filtering
+        if position and _contains_any(position, ADMIN_KEYWORDS):
+            continue
+
+        # Skip obvious non-person entries
+        if "contact" in name or "email" in name:
+            continue
+
+        leads.append(name.title())
+
+    # Dedupe, stable order
+    seen = set()
+    out = []
+    for n in leads:
+        if n not in seen:
+            out.append(n)
+            seen.add(n)
+    return out
+
+
+# --- 2. ORCID RESOLUTION ---
+def _crossref_orcid_candidates(name: str, rows: int = 30) -> Dict[str, dict]:
     """
-    def _split_name(full_name: str):
-        parts = [p for p in re.split(r"\s+", full_name.strip()) if p]
-        if len(parts) < 2:
-            return ("", "")
-        family = parts[-1]
-        given = " ".join(parts[:-1])
-        return (given, family)
+    Returns candidate ORCIDs found in Crossref works search for the author name.
+    Dictionary maps orcid -> evidence dict.
+    """
+    candidates: Dict[str, dict] = {}
 
-    def _author_name_matches(author_obj: dict, target_name: str) -> bool:
-        given_t, family_t = _split_name(target_name)
-        given_a = (author_obj.get("given") or "").strip()
-        family_a = (author_obj.get("family") or "").strip()
-        if not family_a or not family_t:
-            return False
+    params = {
+        "query.author": name,
+        "rows": rows,
+        "sort": "relevance",
+        "order": "desc",
+        "mailto": mailto,
+    }
+    r = _safe_get("https://api.crossref.org/works", params=params, timeout=30)
+    if not r or r.status_code != 200:
+        return candidates
 
-        # Family name: allow multi-word family names in Crossref (match end token)
-        if family_t.lower() != family_a.split()[-1].lower():
-            return False
-
-        # Given name: at least initial should match when present
-        if given_t and given_a:
-            if given_t[0].lower() != given_a[0].lower():
-                return False
-
-        return True
-
-    def _validate_orcid_via_openalex(orcid: str):
-        """Return (score, oxford_flag, lcds_flag). Higher score is better."""
-        try:
-            url = f"https://api.openalex.org/authors/orcid:{orcid}"
-            r = requests.get(url, headers=HEADERS, timeout=15)
-            if r.status_code != 200:
-                return (0, False, False)
-
-            j = r.json()
-            inst_names = []
-            for a in (j.get("affiliations") or []):
-                dname = ((a.get("institution") or {}).get("display_name") or "").lower()
-                if dname:
-                    inst_names.append(dname)
-
-            lki = ((j.get("last_known_institution") or {}).get("display_name") or "").lower()
-            if lki:
-                inst_names.append(lki)
-
-            affils = " ".join(inst_names)
-            oxford = "oxford" in affils
-            lcds = ("leverhulme" in affils) or ("demographic science" in affils) or ("lcds" in affils)
-
-            # Soft support for broader Oxford demography ecosystem
-            demo_related = any(k in affils for k in ["demograph", "population", "nuffield", "public health", "sociolog", "health", "fertilit", "comput", "data science"])
-
-            score = 0
-            if oxford:
-                score += 2
-            if lcds:
-                score += 3
-            if demo_related:
-                score += 1
-
-            return (score, oxford, lcds)
-        except Exception:
-            return (0, False, False)
-
-    # Phase 1: Crossref-first extraction of ORCIDs from works metadata
-    try:
-        params = {
-            "query.author": name,
-            "rows": 100,
-            "sort": "relevance",
-            "order": "desc",
-            "select": "DOI,title,author,created"
-        }
-        cr_r = requests.get("https://api.crossref.org/works", params=params, headers=HEADERS, timeout=30)
-        if cr_r.status_code == 200:
-            candidates = []
-            items = (cr_r.json().get("message") or {}).get("items") or []
-            for item in items:
-                for a in (item.get("author") or []):
-                    orcid_url = a.get("ORCID")
-                    if not orcid_url:
-                        continue
-                    if not _author_name_matches(a, name):
-                        continue
-                    orcid = str(orcid_url).replace("https://orcid.org/", "").replace("http://orcid.org/", "").strip()
-                    if not orcid:
-                        continue
-
-                    score, oxford, lcds = _validate_orcid_via_openalex(orcid)
-                    # Require at least Oxford or LCDS signal to avoid homonyms
-                    if score >= 2:
-                        candidates.append((score, orcid))
-
-            if candidates:
-                candidates.sort(reverse=True)
-                return candidates[0][1]
-    except Exception as e:
-        print(f"      [!] Crossref ORCID discovery failed for {name}: {e}")
-
-    # Phase 2: OpenAlex fallback search for ORCID (gap filler)
-    try:
-        r = requests.get("https://api.openalex.org/authors", params={"search": name, "per-page": 25}, headers=HEADERS, timeout=15)
-        if r.status_code != 200:
-            return None
-
-        best = (0, None)
-        for person in r.json().get("results", []):
-            orcid_val = person.get("orcid")
-            if not orcid_val:
-                continue
-            orcid = str(orcid_val).replace("https://orcid.org/", "").strip()
+    items = (r.json().get("message") or {}).get("items") or []
+    for item in items:
+        authors = item.get("author") or []
+        for a in authors:
+            orcid = a.get("ORCID")
             if not orcid:
                 continue
-
-            score, _, _ = _validate_orcid_via_openalex(orcid)
-            if score > best[0]:
-                best = (score, orcid)
-
-        return best[1]
-    except Exception as e:
-        print(f"      [!] OpenAlex ORCID fallback error for {name}: {e}")
-
-    return None
-            
-        results = r.json().get('results',[])
-        for person in results:
-            affil_names =[]
-            
-            # Extract all known affiliations
-            for a in (person.get('affiliations') or[]):
-                dname = (a.get('institution') or {}).get('display_name') or ""
-                affil_names.append(str(dname).lower())
-                
-            lki_name = (person.get('last_known_institution') or {}).get('display_name') or ""
-            affil_names.append(str(lki_name).lower())
-            
-            affils = " ".join(affil_names)
-            
-            # 1. MUST be affiliated with Oxford or LCDS
-            if not any(req in affils for req in["oxford", "leverhulme", "lcds", "nuffield"]):
+            orcid = _norm(orcid).replace("https://orcid.org/", "")
+            if not re.match(r"^\d{4}-\d{4}-\d{4}-\d{3}[\dX]$", orcid):
                 continue
-            
-            # 2. MUST match relevant topics
-            valid_topics =[
-                "demograph", "sociology", "social", "health", "economic", 
-                "pandemic", "epidemiology", "nuffield", "leverhulme", "lcds",
-                "policy", "zoology", "marketing", "business", "saïd"
-            ]
-            if not any(k in affils for k in valid_topics):
-                continue
-            
-            # 3. MUST NOT be purely medical/engineering with the same name
-            banned_topics =["surgery", "oncology", "cancer", "civil engineering", "materials", "physics", "clinical"]
-            if any(b in affils for b in banned_topics) and not any(v in affils for v in ["demograph", "sociology", "social", "pandemic"]):
-                continue
-            
-            orcid_val = person.get('orcid')
-            if orcid_val:
-                return str(orcid_val).replace('https://orcid.org/', '')
-                
-    except Exception as e:
-        print(f"      [!] ORCID Error for {name}: {e}")
-        
-    return None
 
-def normalize_doi(doi_str):
-    if not doi_str: return ""
-    return doi_str.lower().replace('https://doi.org/', '').replace('http://doi.org/', '').strip()
+            affs = " ".join([x.get("name", "") for x in (a.get("affiliation") or [])])
+            doi = normalize_doi(item.get("DOI"))
+            title = (item.get("title") or [""])[0]
+            journal = (item.get("container-title") or [""])[0]
 
-# --- 3. FETCH PUBLICATIONS (CROSSREF + OPENALEX GAP FILL) ---
-def fetch_works(name, orcid):
-    works_dict = {}
-    if not orcid: return[]
-    
-    # -- PHASE 1: CROSSREF --
+            ev = candidates.setdefault(orcid, {"dois": set(), "aff_text": "", "journals": set(), "titles": set()})
+            if doi:
+                ev["dois"].add(doi)
+            ev["aff_text"] += " " + (affs or "")
+            if journal:
+                ev["journals"].add(journal)
+            if title:
+                ev["titles"].add(title)
+
+    return candidates
+
+
+def _openalex_validate_orcid(orcid: str) -> Dict[str, bool]:
+    """
+    Validates ORCID using OpenAlex author record.
+    Returns flags: oxford_match, lcds_match
+    """
+    flags = {"oxford_match": False, "lcds_match": False}
+
+    # OpenAlex author by ORCID
+    url = f"https://api.openalex.org/authors/orcid:{orcid}"
+    r = _safe_get(url, timeout=20)
+    if not r or r.status_code != 200:
+        return flags
+
+    data = r.json() or {}
+
+    aff_text_parts = []
+    lki = (data.get("last_known_institution") or {}).get("display_name") or ""
+    if lki:
+        aff_text_parts.append(lki)
+
+    for a in (data.get("affiliations") or []):
+        inst = (a.get("institution") or {}).get("display_name") or ""
+        if inst:
+            aff_text_parts.append(inst)
+
+    display = data.get("display_name") or ""
+    if display:
+        aff_text_parts.append(display)
+
+    aff_text = _norm(" ".join(aff_text_parts))
+
+    if _contains_any(aff_text, OXFORD_TERMS):
+        flags["oxford_match"] = True
+    if _contains_any(aff_text, LCDS_TERMS):
+        flags["lcds_match"] = True
+
+    return flags
+
+
+def _score_candidate(name: str, ev: dict, oa_flags: Dict[str, bool]) -> Tuple[int, Dict[str, bool]]:
+    """
+    Returns (score, evidence_flags)
+    """
+    evidence_flags = {
+        "oxford_match": False,
+        "lcds_match": False,
+        "oxford_and_lcds": False,
+        "domain_hint": False,
+    }
+
+    score = 0
+
+    # Crossref affiliation string evidence if present
+    aff_text = _norm(ev.get("aff_text", ""))
+
+    cr_ox = _contains_any(aff_text, OXFORD_TERMS)
+    cr_lcds = _contains_any(aff_text, LCDS_TERMS)
+
+    ox = cr_ox or oa_flags.get("oxford_match", False)
+    lcds = cr_lcds or oa_flags.get("lcds_match", False)
+
+    evidence_flags["oxford_match"] = ox
+    evidence_flags["lcds_match"] = lcds
+    evidence_flags["oxford_and_lcds"] = ox and lcds
+
+    # Strong: Oxford + LCDS
+    if ox and lcds:
+        score += 80
+    elif ox:
+        score += 45
+    elif lcds:
+        score += 25
+
+    # Medium: domain hints from journals/titles
+    blob = " ".join(list(ev.get("journals", set())) + list(ev.get("titles", set())))
+    if _contains_any(blob, DOMAIN_TERMS):
+        score += 15
+        evidence_flags["domain_hint"] = True
+
+    # Medium: repeated evidence across multiple works
+    n_dois = len(ev.get("dois", set()))
+    if n_dois >= 3:
+        score += 15
+    elif n_dois == 2:
+        score += 8
+
+    return score, evidence_flags
+
+
+def get_orcid(name: str) -> Tuple[Optional[str], Dict[str, object]]:
+    """
+    Crossref is the main source. OpenAlex is used only to validate candidates and fill gaps.
+    Returns (orcid or None, metadata dict).
+    """
+    meta: Dict[str, object] = {
+        "confidence": 0,
+        "status": "no_orcid",
+        "evidence_flags": {},
+        "supporting_dois": [],
+        "source": "",
+    }
+
+    candidates = _crossref_orcid_candidates(name)
+    if not candidates:
+        meta["status"] = "no_orcid"
+        return None, meta
+
+    scored: List[Tuple[int, str, dict, dict]] = []
+    for orcid, ev in candidates.items():
+        oa_flags = _openalex_validate_orcid(orcid)
+        score, flags = _score_candidate(name, ev, oa_flags)
+        scored.append((score, orcid, ev, flags))
+
+    scored.sort(reverse=True, key=lambda x: x[0])
+    best_score, best_orcid, best_ev, best_flags = scored[0]
+
+    # Determine if ambiguous
+    second_score = scored[1][0] if len(scored) > 1 else -1
+    ambiguous = (second_score >= best_score - 10) and (second_score > 0)
+
+    high_risk = _is_high_risk_name(name)
+
+    # Thresholds
+    base_threshold = 70 if STRICT_DISAMBIGUATION else 55
+    if high_risk or ambiguous:
+        # For Wen Su type names, require Oxford + LCDS evidence
+        if not best_flags.get("oxford_and_lcds", False):
+            meta.update({
+                "confidence": best_score,
+                "status": "manual_review",
+                "evidence_flags": best_flags,
+                "supporting_dois": sorted(list(best_ev.get("dois", set())))[:10],
+                "source": "crossref+openalex",
+            })
+            return None, meta
+        base_threshold = max(base_threshold, 75)
+
+    if best_score < base_threshold:
+        meta.update({
+            "confidence": best_score,
+            "status": "manual_review",
+            "evidence_flags": best_flags,
+            "supporting_dois": sorted(list(best_ev.get("dois", set())))[:10],
+            "source": "crossref+openalex",
+        })
+        return None, meta
+
+    meta.update({
+        "confidence": best_score,
+        "status": "ok",
+        "evidence_flags": best_flags,
+        "supporting_dois": sorted(list(best_ev.get("dois", set())))[:10],
+        "source": "crossref+openalex",
+    })
+    return best_orcid, meta
+
+
+# --- 3. WORKS FETCHING ---
+def fetch_works(name: str, orcid: str) -> List[dict]:
+    """
+    Fetch works for an ORCID.
+    Crossref is primary.
+    OpenAlex is used as a gap filler for items not returned by Crossref.
+    """
+    works_dict: Dict[str, dict] = {}
+    if not orcid:
+        return []
+
+    # PHASE 1: Crossref
     try:
-        cr_url = f"https://api.crossref.org/works?filter=orcid:{orcid},from-pub-date:{START_DATE}&sort=created&order=desc&rows=100"
-        cr_r = requests.get(cr_url, headers=HEADERS, timeout=30)
-        
-        if cr_r.status_code == 200:
-            for item in cr_r.json().get('message', {}).get('items',[]):
-                # Safe Date Parsing
-                d = item.get('published-online') or item.get('created') or item.get('published-print') or {}
-                date_parts = d.get('date-parts') or[]
-                date_str = datetime.now().strftime('%Y-%m-%d')
-                if len(date_parts) > 0 and len(date_parts[0]) > 0:
+        cr_url = "https://api.crossref.org/works"
+        cr_params = {
+            "filter": f"orcid:{orcid},from-pub-date:{START_DATE}",
+            "sort": "created",
+            "order": "desc",
+            "rows": 200,
+            "mailto": mailto,
+        }
+        cr_r = _safe_get(cr_url, params=cr_params, timeout=30)
+
+        if cr_r and cr_r.status_code == 200:
+            for item in (cr_r.json().get("message") or {}).get("items") or []:
+                d = item.get("published-online") or item.get("created") or item.get("published-print") or {}
+                date_parts = d.get("date-parts") or []
+                date_str = datetime.now().strftime("%Y-%m-%d")
+                if date_parts and date_parts[0]:
                     p = date_parts[0]
-                    if len(p) >= 3: date_str = f"{p[0]:04d}-{p[1]:02d}-{p[2]:02d}"
-                    elif len(p) == 2: date_str = f"{p[0]:04d}-{p[1]:02d}-01"
-                    elif len(p) == 1: date_str = f"{p[0]:04d}-01-01"
+                    if len(p) >= 3:
+                        date_str = f"{p[0]:04d}-{p[1]:02d}-{p[2]:02d}"
+                    elif len(p) == 2:
+                        date_str = f"{p[0]:04d}-{p[1]:02d}-01"
+                    elif len(p) == 1:
+                        date_str = f"{p[0]:04d}-01-01"
 
-                titles = item.get('title') or[]
+                titles = item.get("title") or []
                 title_str = str(titles[0]) if titles else "Untitled"
-                journals = item.get('container-title') or []
+                journals = item.get("container-title") or []
                 journal_str = str(journals[0]) if journals else "Preprint"
-                
-                doi_val = normalize_doi(item.get('DOI'))
-                subtype = item.get('subtype')
-                is_preprint = subtype == 'preprint' or journal_str.lower() in['preprint', 'medrxiv', 'biorxiv', 'socarxiv', 'ssrn', 'osf']
 
-                # Country Enrichment
+                doi_val = normalize_doi(item.get("DOI"))
+                subtype = item.get("subtype")
+                is_preprint = subtype == "preprint" or journal_str.lower() in {
+                    "preprint", "medrxiv", "biorxiv", "socarxiv", "ssrn", "osf"
+                }
+
+                # Country enrichment via OpenAlex (lightweight)
                 countries = ""
                 if doi_val:
                     try:
                         time.sleep(0.05)
-                        oa_r = requests.get(f"https://api.openalex.org/works/doi:https://doi.org/{doi_val}?select=authorships", headers=HEADERS, timeout=5)
-                        if oa_r.status_code == 200:
-                            c_set = {str(i.get('country_code')) for a in (oa_r.json().get('authorships') or []) for i in (a.get('institutions') or[]) if i.get('country_code')}
-                            countries = ",".join(c_set)
-                    except: pass
+                        oa_r = _safe_get(
+                            f"https://api.openalex.org/works/doi:https://doi.org/{doi_val}",
+                            params={"select": "authorships"},
+                            timeout=10,
+                        )
+                        if oa_r and oa_r.status_code == 200:
+                            c_set = {
+                                str(i.get("country_code"))
+                                for a in (oa_r.json().get("authorships") or [])
+                                for i in (a.get("institutions") or [])
+                                if i.get("country_code")
+                            }
+                            countries = ",".join(sorted(c_set))
+                    except Exception:
+                        pass
 
                 work_obj = {
-                    'Date': date_str, 'Year': date_str.split('-')[0], 'LCDS Author': name,
-                    'Title': title_str, 'Journal': journal_str,
-                    'Type': "Preprint" if is_preprint else "Article",
-                    'Citations': item.get('is-referenced-by-count', 0),
-                    'DOI': f"https://doi.org/{doi_val}" if doi_val else "", 'Countries': countries
+                    "Date": date_str,
+                    "Year": date_str.split("-")[0],
+                    "LCDS Author": name,
+                    "Title": title_str,
+                    "Journal": journal_str,
+                    "Type": "Preprint" if is_preprint else "Article",
+                    "Citations": item.get("is-referenced-by-count", 0),
+                    "DOI": f"https://doi.org/{doi_val}" if doi_val else "",
+                    "Countries": countries,
                 }
-                
+
                 dict_key = doi_val if doi_val else title_str.lower()
                 works_dict[dict_key] = work_obj
     except Exception as e:
-        print(f"[!] CrossRef failed for {name}: {e}")
+        print(f"[!] Crossref failed for {name}: {e}")
 
-    # -- PHASE 2: OPENALEX GAP FILLER --
+    # PHASE 2: OpenAlex gap filler
     try:
-        oa_url = f"https://api.openalex.org/works?filter=author.orcid:https://orcid.org/{orcid},from_publication_date:{START_DATE}&per-page=100"
-        oa_r = requests.get(oa_url, headers=HEADERS, timeout=30)
-        
-        if oa_r.status_code == 200:
-            for item in oa_r.json().get('results',[]):
-                doi_val = normalize_doi(item.get('doi'))
-                title_str = str(item.get('title') or "Untitled")
+        oa_url = "https://api.openalex.org/works"
+        oa_params = {
+            "filter": f"author.orcid:https://orcid.org/{orcid},from_publication_date:{START_DATE}",
+            "per-page": 200,
+        }
+        oa_r = _safe_get(oa_url, params=oa_params, timeout=30)
+
+        if oa_r and oa_r.status_code == 200:
+            for item in oa_r.json().get("results", []) or []:
+                doi_val = normalize_doi(item.get("doi"))
+                title_str = str(item.get("title") or "Untitled")
                 title_key = title_str.lower()
-                
-                # Skip if already captured by CrossRef
+
                 if (doi_val and doi_val in works_dict) or (title_key in works_dict):
                     continue
-                
-                date_str = item.get('publication_date') or f"{item.get('publication_year', 2020)}-01-01"
+
+                date_str = item.get("publication_date") or f"{item.get('publication_year', 2020)}-01-01"
                 journal_str = "Preprint"
                 is_preprint = False
-                
-                loc = item.get('primary_location') or {}
-                source = loc.get('source') or {}
+
+                loc = item.get("primary_location") or {}
+                source = loc.get("source") or {}
                 if source:
-                    journal_str = source.get('display_name') or "Preprint"
-                    if source.get('type') == 'repository': is_preprint = True
-                
-                c_set = {str(i.get('country_code')) for a in (item.get('authorships') or[]) for i in (a.get('institutions') or[]) if i.get('country_code')}
-                
+                    journal_str = source.get("display_name") or "Preprint"
+                    if source.get("type") == "repository":
+                        is_preprint = True
+
+                c_set = {
+                    str(i.get("country_code"))
+                    for a in (item.get("authorships") or [])
+                    for i in (a.get("institutions") or [])
+                    if i.get("country_code")
+                }
+
                 work_obj = {
-                    'Date': date_str, 'Year': date_str.split('-')[0], 'LCDS Author': name,
-                    'Title': title_str, 'Journal': journal_str,
-                    'Type': "Preprint" if is_preprint else "Article",
-                    'Citations': item.get('cited_by_count', 0),
-                    'DOI': f"https://doi.org/{doi_val}" if doi_val else "", 'Countries': ",".join(c_set)
+                    "Date": date_str,
+                    "Year": date_str.split("-")[0],
+                    "LCDS Author": name,
+                    "Title": title_str,
+                    "Journal": journal_str,
+                    "Type": "Preprint" if is_preprint else "Article",
+                    "Citations": item.get("cited_by_count", 0),
+                    "DOI": f"https://doi.org/{doi_val}" if doi_val else "",
+                    "Countries": ",".join(sorted(c_set)),
                 }
                 dict_key = doi_val if doi_val else title_key
                 works_dict[dict_key] = work_obj
@@ -368,62 +515,59 @@ def fetch_works(name, orcid):
 
     return list(works_dict.values())
 
+
 # --- MAIN EXECUTION ---
 if __name__ == "__main__":
     os.makedirs("data", exist_ok=True)
-    staff = get_staff_list()
-    
-    if not os.path.exists(CSV_FILE):
-        pd.DataFrame(columns=['Date','Year','LCDS Author','Title','Journal','Type','Citations','DOI','Countries']).to_csv(CSV_FILE, index=False, encoding='utf-8')
 
-    print(f"[{datetime.now().time()}] 🚀 Starting fetch for {len(staff)} researchers...")
-    
+    staff = get_staff_list()
+    if not staff:
+        raise SystemExit("No staff discovered. Check PEOPLE_URL or parsing selectors.")
+
+    if not os.path.exists(CSV_FILE):
+        pd.DataFrame(
+            columns=[
+                "Date", "Year", "LCDS Author", "Title", "Journal",
+                "Type", "Citations", "DOI", "Countries",
+                "ORCID", "ORCID Confidence", "ORCID Status"
+            ]
+        ).to_csv(CSV_FILE, index=False, encoding="utf-8")
+
+    print(f"[{datetime.now().time()}] Starting fetch for {len(staff)} researchers")
+
     for person in staff:
-        print(f"   Processing {person}...")
-        time.sleep(0.5) # Polite API delay
-        
-        orcid = get_orcid(person)
-        if orcid:
-            data = fetch_works(person, orcid)
-            if data:
-                df_new = pd.DataFrame(data)
-                try:
-                    df_new.to_csv(CSV_FILE, mode='a', header=False, index=False, encoding='utf-8')
-                    print(f"      ✅ Added {len(data)} works (CrossRef + Gaps)")
-                except PermissionError:
-                    print("      ❌ FATAL ERROR: CSV is open in Excel! Please close it and restart.")
-                    break
-            else:
-                print("      ⚠️ No works found since 2019-09-01.")
-        else:
-            print("      ❌ No valid ORCID found.")
-    
-    # --- FINAL DEDUPLICATION ---
+        print(f"\n[+] Researcher: {person}")
+        time.sleep(0.4)
+
+        orcid, meta = get_orcid(person)
+        if not orcid:
+            print(f"    ORCID: none ({meta.get('status')}, score {meta.get('confidence')})")
+            continue
+
+        print(f"    ORCID: {orcid} (score {meta.get('confidence')})")
+        data = fetch_works(person, orcid)
+        if not data:
+            print("    No works found since START_DATE")
+            continue
+
+        df_new = pd.DataFrame(data)
+        df_new["ORCID"] = f"https://orcid.org/{orcid}"
+        df_new["ORCID Confidence"] = meta.get("confidence", 0)
+        df_new["ORCID Status"] = meta.get("status", "ok")
+
+        try:
+            # Ensure file exists with header already. Append without header.
+            df_new.to_csv(CSV_FILE, mode="a", header=False, index=False, encoding="utf-8")
+            print(f"    Added {len(df_new)} works")
+        except PermissionError:
+            print("    FATAL: CSV is open elsewhere. Close it and rerun.")
+            break
+
+    # FINAL DEDUPLICATION
     try:
-        print("\n🧹 Cleaning up and removing cross-author duplicates...")
-        df = pd.read_csv(CSV_FILE, encoding='utf-8')
-        
-        has_doi = df['DOI'].notna() & (df['DOI'] != "")
-        
-        # Merge co-authored papers (combines LCDS Authors gracefully)
-        df_dois = df[has_doi].groupby('DOI', as_index=False).agg({
-            'Date': 'first', 'Year': 'first', 
-            'LCDS Author': lambda x: ', '.join(sorted(set(x))), 
-            'Title': 'first', 'Journal': 'first', 'Type': 'first', 
-            'Citations': 'max', 'Countries': 'first'
-        })
-        
-        df_no_dois = df[~has_doi].groupby('Title', as_index=False).agg({
-            'Date': 'first', 'Year': 'first', 
-            'LCDS Author': lambda x: ', '.join(sorted(set(x))), 
-            'Journal': 'first', 'Type': 'first', 
-            'Citations': 'max', 'DOI': 'first', 'Countries': 'first'
-        })
-        
-        df_final = pd.concat([df_dois, df_no_dois])
-        df_final = df_final.sort_values(by="Date", ascending=False)
-        
-        df_final.to_csv(CSV_FILE, index=False, encoding='utf-8')
-        print("✅ Done! Data is strictly filtered, gap-filled, deduplicated, and ready for Streamlit.")
+        df_final = pd.read_csv(CSV_FILE, encoding="utf-8")
+        df_final.drop_duplicates(subset=["DOI", "Title", "LCDS Author"], inplace=True)
+        df_final.to_csv(CSV_FILE, index=False, encoding="utf-8")
+        print(f"\n✅ Done. Final unique records: {len(df_final)}")
     except Exception as e:
-        print(f"❌ Clean-up error: {e}")
+        print(f"\n[!] Could not deduplicate final CSV: {e}")
