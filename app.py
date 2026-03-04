@@ -117,6 +117,7 @@ with tab3:
     
     if not df_filt.empty and 'Countries' in df_filt.columns:
         try:
+            # Explode countries logic
             df_ex = df_filt.assign(Country=df_filt['Countries'].astype(str).str.split(',')).explode('Country')
             df_ex['Country'] = df_ex['Country'].str.strip()
             df_ex = df_ex[df_ex['Country'].str.len() == 2]
