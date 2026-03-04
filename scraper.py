@@ -93,7 +93,10 @@ def fetch_recent_crossref(name, orcid):
             for item in r.json().get('message', {}).get('items', []):
                 # --- FIX: ROBUST DATE PARSING ---
                 try:
-                    parts = item['issued']['date-parts'][0]
+                    # Prefer 'published-online' (fastest), then 'published-print', then 'issued'
+                    date_obj = item.get('published-online', item.get('published-print', item.get('issued', {})))
+                    parts = date_obj['date-parts'][0]
+                    
                     if len(parts) == 3:
                         pub_date = f"{parts[0]}-{parts[1]:02d}-{parts[2]:02d}"
                     elif len(parts) == 2:
@@ -101,19 +104,21 @@ def fetch_recent_crossref(name, orcid):
                     else:
                         pub_date = f"{parts[0]}-01-01" # Default Jan 1
                 except:
-                    # Fallback to created date or today
                     pub_date = datetime.now().strftime('%Y-%m-%d')
 
                 # Type logic
                 subtype = item.get('subtype', '')
                 w_type = "Preprint" if subtype == 'preprint' or item.get('type') == 'posted-content' else "Journal Article"
 
+                # Title Cleanup
+                title = item.get('title', [''])[0] if item.get('title') else "Untitled"
+
                 works.append({
                     'Date Available Online': pub_date,
                     'LCDS Author': name,
                     'All Authors': ", ".join([f"{a.get('given','')} {a.get('family','')}" for a in item.get('author', [])]),
                     'DOI': f"https://doi.org/{item.get('DOI')}",
-                    'Paper Title': item.get('title', [''])[0],
+                    'Paper Title': title,
                     'Journal Name': item.get('container-title', [''])[0] if item.get('container-title') else "Preprint/Other",
                     'Journal Area': "Pending (Recent)", 
                     'Year of Publication': parts[0] if 'parts' in locals() else datetime.now().year,
@@ -147,15 +152,23 @@ if __name__ == "__main__":
                 try:
                     all_records.extend(f.result())
                 except Exception as e:
-                    print(f"[CRITICAL] Thread failed: {e}") # Won't crash the whole script now
+                    print(f"[CRITICAL] Thread failed: {e}")
     
     # ALWAYS create CSV
     if all_records:
         df = pd.DataFrame(all_records)
-        # Deduplicate
+        
+        # --- DEDUPLICATION STRATEGY ---
+        # 1. OpenAlex is usually "better" (has Journal Area), but Crossref is "newer".
+        # 2. Sort by Source (OpenAlex first) so we keep its metadata.
         df['Source_Rank'] = df['Source'].apply(lambda x: 1 if x == 'OpenAlex' else 2)
         df = df.sort_values(by=['DOI', 'Source_Rank'])
-        df = df.drop_duplicates(subset=['DOI'], keep='first').drop(columns=['Source_Rank', 'Source'])
+        
+        # 3. Drop duplicates, keeping OpenAlex version if both exist
+        df = df.drop_duplicates(subset=['DOI'], keep='first')
+        
+        # 4. Final Cleanup
+        df = df.drop(columns=['Source_Rank', 'Source'])
         df = df.sort_values(by='Date Available Online', ascending=False)
         
         df.to_csv("data/lcds_publications.csv", index=False)
