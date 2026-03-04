@@ -9,7 +9,6 @@ st.set_page_config(page_title="LCDS Impact Tracker", page_icon="🎓", layout="w
 pio.templates.default = "plotly_dark"
 
 # --- CUSTOM CSS ---
-# We keep only the CSS that enhances elements (gradients, metric colors) without breaking Streamlit's native dark mode.
 st.markdown("""
     <style>
         .main-header { 
@@ -31,6 +30,14 @@ st.markdown("""
         }
         .align-bottom {
             margin-top: 27px;
+        }
+        .footer {
+            text-align: center;
+            color: #A0AEC0;
+            font-size: 0.9rem;
+            margin-top: 50px;
+            padding-top: 20px;
+            border-top: 1px solid #333;
         }
     </style>
 """, unsafe_allow_html=True)
@@ -64,9 +71,9 @@ with st.sidebar:
 
     period = st.radio("Time Range",["All Time (2019+)", "Last 2 Years", "Last Year", "Last Month", "Last Week"])
     
-    # Simple footer in sidebar
+    # Sidebar Footer
     st.markdown("<br><br><br><br>", unsafe_allow_html=True)
-    st.caption("LCDS Impact Tracker v1.0")
+    st.caption("- Leverhulme Centre for Demographic Science - University of Oxford (2026).")
 
 now = datetime.now()
 if "Week" in period: start = now - timedelta(days=7)
@@ -82,7 +89,6 @@ st.markdown('<div class="main-header">Leverhulme Centre for Demographic Science<
 st.markdown('<div class="sub-header">Tracking research impact, preprints, and global collaborations.</div>', unsafe_allow_html=True)
 
 # --- KPI METRICS CARD ---
-# Wrapping metrics in a border container makes them look like a modern dashboard panel
 with st.container(border=True):
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("📚 Publications", len(df_filt))
@@ -97,19 +103,17 @@ tab1, tab2, tab3 = st.tabs(["📄 Publications List", "📊 Impact Analytics", "
 
 # TAB 1: LIST
 with tab1:
-    # Top action bar for Tab 1
     action_col1, action_col2, action_col3 = st.columns([4, 2, 2])
     
     with action_col1:
         search = st.text_input("🔍 Search", placeholder="Search by Title, Author...").lower()
     with action_col2:
-        sort = st.selectbox("Sort By",["Newest", "Citations", "Author"])
+        sort = st.selectbox("Sort By", ["Newest", "Citations", "Author"])
     with action_col3:
         st.markdown('<div class="align-bottom"></div>', unsafe_allow_html=True)
         csv_data = df_filt.to_csv(index=False).encode('utf-8')
         st.download_button("📥 Download CSV", csv_data, "lcds_data.csv", "text/csv", use_container_width=True)
     
-    # Process view
     view = df_filt.copy()
     if search:
         view = view[view['Title'].str.lower().str.contains(search, na=False) | view['LCDS Author'].str.lower().str.contains(search, na=False)]
@@ -128,10 +132,9 @@ with tab1:
 
 # TAB 2: ANALYTICS
 with tab2:
-    st.write("") # Spacer
+    st.write("")
     c1, c2 = st.columns(2, gap="large")
     
-    # Custom color scale to match the #D4AF37 Gold theme
     gold_scale =["#2b2b2b", "#8b7324", "#D4AF37"] 
 
     with c1:
@@ -141,7 +144,7 @@ with tab2:
             auth = df_filt.groupby('LCDS Author')['Citations'].sum().sort_values(ascending=False).head(10).reset_index()
             fig = px.bar(auth, x='Citations', y='LCDS Author', orientation='h', color='Citations', color_continuous_scale=gold_scale)
             fig.update_layout(yaxis={'categoryorder':'total ascending'}, plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)", margin=dict(l=0, r=0, t=20, b=0))
-            fig.update_coloraxes(showscale=False) # Hide color bar for cleaner UI
+            fig.update_coloraxes(showscale=False)
             st.plotly_chart(fig, use_container_width=True)
             
     with c2:
@@ -169,7 +172,7 @@ with tab3:
                 
                 if not df_ex.empty:
                     stats = df_ex.groupby('Country').agg({'Citations': 'sum', 'DOI': 'count'}).reset_index()
-                    coords = {'US': [37, -95], 'GB': [55, -3], 'CN': [35, 104], 'DE': [51, 10], 'FR': [46, 2], 'IT':[41, 12], 'CA': [56, -106], 'AU':[-25, 133], 'NL': [52, 5]}
+                    coords = {'US': [37, -95], 'GB':[55, -3], 'CN': [35, 104], 'DE':[51, 10], 'FR': [46, 2], 'IT':[41, 12], 'CA': [56, -106], 'AU':[-25, 133], 'NL': [52, 5]}
                     
                     stats['lat'] = stats['Country'].map(lambda x: coords.get(x, [0,0])[0])
                     stats['lon'] = stats['Country'].map(lambda x: coords.get(x,[0,0])[1])
@@ -187,3 +190,6 @@ with tab3:
                     st.info("No valid country codes found yet.")
             else:
                 st.warning("⚠️ Country data is still populating. The scraper is fetching it row-by-row. Refresh later.")
+
+# --- MAIN FOOTER ---
+st.markdown('<div class="footer">- Leverhulme Centre for Demographic Science - University of Oxford (2026).</div>', unsafe_allow_html=True)
