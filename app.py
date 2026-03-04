@@ -136,7 +136,7 @@ st.dataframe(
 # Footer
 st.markdown("""
     <div class="footer">
-        © Certified University of Oxford 2026 - All Rights Reserved. | 
+        © University of Oxford 2026 - All Rights Reserved. | 
         <a href="https://www.demography.ox.ac.uk" target="_blank">demography.ox.ac.uk</a>
     </div>
 """, unsafe_allow_html=True)
