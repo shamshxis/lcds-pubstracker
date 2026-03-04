@@ -9,6 +9,10 @@ st.set_page_config(page_title="LCDS Impact Tracker", page_icon="🎓", layout="w
 # --- TRENDY DARK-MODE CSS ---
 st.markdown("""
     <style>
+        /* Import Google Font */
+        @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap');
+
+        /* Subheading Gradient */
         .trendy-sub {
             background: linear-gradient(90deg, #002147 0%, #C49102 100%);
             -webkit-background-clip: text;
@@ -18,36 +22,65 @@ st.markdown("""
         @media (prefers-color-scheme: dark) {
             .trendy-sub { background: linear-gradient(90deg, #81D4FA 0%, #FFD700 100%); -webkit-background-clip: text; }
         }
+
+        /* Footer */
         .footer {
             position: fixed; left: 0; bottom: 0; width: 100%;
             background-color: #002147; color: white; text-align: center;
             padding: 12px; font-size: 0.85rem; z-index: 999;
         }
         .footer a { color: #FFD700; text-decoration: none; font-weight: bold; }
+
+        /* Table Styling */
         .table-container { max-height: 500px; overflow-y: auto; border-radius: 8px; border: 1px solid #ddd; }
         .styled-table { width: 100%; border-collapse: collapse; font-family: 'Roboto', sans-serif; font-size: 0.9rem; }
-        .styled-table thead tr th { position: sticky; top: 0; background-color: #002147; color: white; padding: 12px; }
+        .styled-table thead tr th { position: sticky; top: 0; background-color: #002147; color: white; padding: 12px; z-index: 1; }
         .styled-table td { padding: 10px; border-bottom: 1px solid #eee; }
+        
+        /* Dark Mode Table */
+        @media (prefers-color-scheme: dark) {
+            .styled-table thead tr th { background-color: #1E1E1E; color: #FFD700; }
+            .styled-table td { border-bottom: 1px solid #333; color: #ddd; }
+        }
     </style>
 """, unsafe_allow_html=True)
 
-# --- LOAD DATA ---
+# --- LOAD DATA (WITH SAFETY CHECKS) ---
 @st.cache_data(ttl=3600)
 def load_data():
     url = "https://raw.githubusercontent.com/shamshxis/lcds-pubstracker/data/data/lcds_publications.csv"
     try:
         df = pd.read_csv(url)
+        
+        # --- CRITICAL FIX: Self-Healing Columns ---
+        # If these columns are missing in the CSV, create them with defaults
+        # to prevent KeyError crashes.
+        if 'Publication Type' not in df.columns:
+            df['Publication Type'] = 'Journal Article'
+        if 'Journal Area' not in df.columns:
+            df['Journal Area'] = 'Multidisciplinary'
+        if 'Citation Count' not in df.columns:
+            df['Citation Count'] = 0
+        if 'DOI' not in df.columns:
+            df['DOI'] = '#'
+            
+        # Date Parsing
         df['Date Available Online'] = pd.to_datetime(df['Date Available Online'], errors='coerce')
+        
         return df
-    except: return pd.DataFrame()
+    except Exception as e:
+        return pd.DataFrame()
 
 df = load_data()
 
 # --- SIDEBAR ---
 st.sidebar.title("🔍 Filters")
 if df.empty:
+    st.warning("⚠️ No data available yet.")
+    st.info("Please run the 'Daily Publication Scraper' action in GitHub to generate the first dataset.")
     st.stop()
 
+# Time Filter
 time_filter = st.sidebar.radio("Select Period", ["All Time", "Last 5 Years", "Last Year", "Last Month", "Last Week"], index=1)
 now = datetime.now()
 if time_filter == "Last Week": start_date = now - timedelta(days=7)
@@ -60,7 +93,7 @@ df_filtered = df[(df['Date Available Online'] >= start_date)].copy()
 
 # --- HEADER ---
 st.title("Leverhulme Centre for Demographic Science")
-st.markdown('<div class="trendy-sub">Leverhulme Centre for Demographic Science (LCDS) measuring our impact across the years.</div>', unsafe_allow_html=True)
+st.markdown('<div class="trendy-sub">Measuring our impact across the years.</div>', unsafe_allow_html=True)
 
 # --- METRICS ---
 c1, c2, c3, c4 = st.columns(4)
@@ -71,8 +104,21 @@ c4.metric("Active Authors", df_filtered['LCDS Author'].nunique())
 
 # --- TABLE ---
 st.subheader("📄 Recent Publications")
-df_display = df_filtered[['Date Available Online', 'LCDS Author', 'Paper Title', 'Journal Name', 'Publication Type', 'Citation Count', 'DOI']].copy()
-df_display['DOI'] = df_display['DOI'].apply(lambda x: f'<a href="{x}" target="_blank">View</a>' if str(x).startswith('http') else x)
+
+# Ensure we only try to display columns that actually exist
+available_cols = ['Date Available Online', 'LCDS Author', 'Paper Title', 'Journal Name', 'Publication Type', 'Citation Count', 'DOI']
+final_cols = [c for c in available_cols if c in df_filtered.columns]
+
+df_display = df_filtered[final_cols].copy()
+
+# Helper to format links
+if 'DOI' in df_display.columns:
+    df_display['DOI'] = df_display['DOI'].apply(lambda x: f'<a href="{x}" target="_blank">View</a>' if str(x).startswith('http') else x)
+
+# Helper to format dates
+if 'Date Available Online' in df_display.columns:
+    df_display['Date Available Online'] = df_display['Date Available Online'].dt.strftime('%Y-%m-%d')
+
 html_table = df_display.to_html(escape=False, index=False, classes="styled-table")
 st.markdown(f'<div class="table-container">{html_table}</div>', unsafe_allow_html=True)
 
