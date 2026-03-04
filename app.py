@@ -4,38 +4,31 @@ import plotly.express as px
 import plotly.io as pio
 from datetime import datetime, timedelta
 
-# --- 1. CONFIG & DARK MODE ---
+# --- CONFIG ---
 st.set_page_config(page_title="LCDS Impact Tracker", page_icon="🎓", layout="wide", initial_sidebar_state="expanded")
 pio.templates.default = "plotly_dark"
 
+# --- DARK MODE CSS ---
 st.markdown("""
     <style>
         [data-testid="stAppViewContainer"] { background-color: #0E1117; color: #FAFAFA; }
         [data-testid="stSidebar"] { background-color: #161b24; border-right: 1px solid #333; }
-        
-        .main-header {
-            font-size: 2.8rem; font-weight: 700;
-            background: linear-gradient(90deg, #D4AF37 0%, #FAFAFA 100%);
-            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-        }
-        .sub-header { color: #a0a0a0; font-size: 1.1rem; border-bottom: 1px solid #444; padding-bottom: 20px; margin-bottom: 30px; }
+        .main-header { font-size: 2.5rem; font-weight: 700; background: linear-gradient(90deg, #D4AF37, #FAFAFA); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        .sub-header { color: #aaa; padding-bottom: 20px; border-bottom: 1px solid #333; margin-bottom: 20px; }
         div[data-testid="stMetricValue"] { color: #D4AF37 !important; font-size: 2rem !important; }
-        [data-testid="stMetric"] { background-color: #1f242e; padding: 15px; border-radius: 8px; border: 1px solid #333; }
-        .footer { margin-top: 60px; padding-top: 20px; border-top: 1px solid #333; text-align: center; color: #666; font-size: 0.8rem; }
+        [data-testid="stMetric"] { background-color: #1f242e; border: 1px solid #333; border-radius: 8px; }
     </style>
 """, unsafe_allow_html=True)
 
-# --- 2. LOAD DATA ---
+# --- LOAD DATA ---
 @st.cache_data(ttl=3600)
 def load_data():
     try:
         df = pd.read_csv("data/lcds_publications.csv")
+        # Ensure cols
         for c in ['Date', 'Year', 'LCDS Author', 'Title', 'Journal', 'Type', 'Citations', 'DOI', 'Countries']:
-            if c not in df.columns:
-                if c == 'Citations': df[c] = 0
-                elif c == 'Year': df[c] = datetime.now().year
-                else: df[c] = "Unknown" if c != 'Countries' else ""
-        
+            if c not in df.columns: df[c] = 0 if c in ['Citations','Year'] else ""
+            
         df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
         df['Year'] = pd.to_numeric(df['Year'], errors='coerce').fillna(0).astype(int)
         df['Citations'] = pd.to_numeric(df['Citations'], errors='coerce').fillna(0)
@@ -44,8 +37,8 @@ def load_data():
 
 df = load_data()
 
-# --- 3. SIDEBAR ---
-st.sidebar.markdown("### 🎓 Filters")
+# --- SIDEBAR ---
+st.sidebar.title("🎓 Filters")
 if df.empty:
     st.warning("Data loading... please wait.")
     st.stop()
@@ -60,118 +53,81 @@ else: start = pd.to_datetime("2019-09-01")
 
 df_filt = df[df['Date'] >= start].copy()
 
-# --- 4. MAIN ---
+# --- MAIN ---
 st.markdown('<div class="main-header">Leverhulme Centre for Demographic Science</div>', unsafe_allow_html=True)
 st.markdown('<div class="sub-header">Tracking research impact, preprints, and global collaborations.</div>', unsafe_allow_html=True)
 
 c1, c2, c3, c4 = st.columns(4)
 c1.metric("Publications", len(df_filt))
 c2.metric("Total Citations", int(df_filt['Citations'].sum()))
-c3.metric("Preprints", len(df_filt[df_filt['Type']=="Preprint"]))
+c3.metric("Preprints", len(df_filt[df_filt['Type'].str.contains("Preprint", case=False, na=False)]))
 c4.metric("Active Researchers", df_filt['LCDS Author'].nunique())
 
 st.divider()
 
-tab1, tab2, tab3 = st.tabs(["📄 Publications", "📊 Impact Analytics", "🌍 Global Reach"])
+tab1, tab2, tab3 = st.tabs(["📄 List", "📊 Impact", "🌍 Map"])
 
 # TAB 1: LIST
 with tab1:
     c1, c2 = st.columns([3, 1])
-    with c1: search = st.text_input("🔍 Search Database", placeholder="Title, Author, or Journal...").lower()
-    with c2: sort = st.selectbox("Sort By", ["Newest First", "Oldest First", "Most Cited", "Title A-Z"])
-
-    if search:
-        df_view = df_filt[
-            df_filt['Title'].str.lower().str.contains(search, na=False) |
-            df_filt['LCDS Author'].str.lower().str.contains(search, na=False)
-        ].copy()
-    else: df_view = df_filt.copy()
-
-    if "Newest" in sort: df_view = df_view.sort_values("Date", ascending=False)
-    elif "Oldest" in sort: df_view = df_view.sort_values("Date", ascending=True)
-    elif "Cited" in sort: df_view = df_view.sort_values("Citations", ascending=False)
-    elif "Title" in sort: df_view = df_view.sort_values("Title", ascending=True)
-
-    st.download_button("📥 Download View (CSV)", df_view.to_csv(index=False).encode('utf-8'), "lcds_data.csv", "text/csv")
-    st.dataframe(
-        df_view,
-        column_order=("Date", "Citations", "LCDS Author", "Title", "Journal", "Type", "DOI"),
-        column_config={
-            "DOI": st.column_config.LinkColumn("Link", display_text="Open"),
-            "Date": st.column_config.DateColumn("Date", format="YYYY-MM-DD"),
-            "Title": st.column_config.TextColumn("Title", width="large"),
-        },
-        hide_index=True, use_container_width=True, height=600
-    )
-
-# TAB 2: ANALYTICS (IMPACT FOCUSED)
-with tab2:
-    if not df_filt.empty:
-        c1, c2 = st.columns(2)
-        
-        with c1:
-            st.subheader("🏆 Top Researchers by Impact")
-            # Group by Author -> Sum Citations
-            auth_stats = df_filt.groupby('LCDS Author')['Citations'].sum().reset_index()
-            auth_stats = auth_stats.sort_values('Citations', ascending=False).head(10)
-            
-            fig = px.bar(auth_stats, x='Citations', y='LCDS Author', orientation='h', 
-                         color='Citations', color_continuous_scale='Viridis',
-                         title="Total Citations (Top 10 Authors)")
-            fig.update_layout(yaxis={'categoryorder':'total ascending'}, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
-            st.plotly_chart(fig, use_container_width=True)
-
-        with c2:
-            st.subheader("📰 Top Journals by Impact")
-            # Group by Journal -> Sum Citations
-            # Filter out "Unknown" or "Preprint" to see real journals
-            j_stats = df_filt[~df_filt['Journal'].isin(['Unknown', 'Preprint'])].groupby('Journal')['Citations'].sum().reset_index()
-            j_stats = j_stats.sort_values('Citations', ascending=False).head(10)
-            
-            fig = px.bar(j_stats, x='Citations', y='Journal', orientation='h',
-                         color='Citations', color_continuous_scale='Magma',
-                         title="Total Citations (Top 10 Journals)")
-            fig.update_layout(yaxis={'categoryorder':'total ascending'}, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
-            st.plotly_chart(fig, use_container_width=True)
-        
-        st.subheader("📈 Citations Over Time")
-        time_stats = df_filt.groupby('Year')['Citations'].sum().reset_index()
-        fig_time = px.area(time_stats, x='Year', y='Citations', color_discrete_sequence=['#D4AF37'])
-        fig_time.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
-        st.plotly_chart(fig_time, use_container_width=True)
-
-# TAB 3: GLOBAL MAP
-with tab3:
-    st.subheader("Global Citation Impact")
-    st.markdown("Pins represent locations of citing/collaborating institutions.")
+    search = c1.text_input("🔍 Search", placeholder="Title, Author...").lower()
+    sort = c2.selectbox("Sort By", ["Newest", "Citations", "Author"])
     
+    view = df_filt.copy()
+    if search:
+        view = view[view['Title'].str.lower().str.contains(search, na=False) | view['LCDS Author'].str.lower().str.contains(search, na=False)]
+    
+    if sort == "Newest": view = view.sort_values("Date", ascending=False)
+    elif sort == "Citations": view = view.sort_values("Citations", ascending=False)
+    elif sort == "Author": view = view.sort_values("LCDS Author")
+
+    st.download_button("📥 Download CSV", view.to_csv(index=False).encode('utf-8'), "lcds_data.csv", "text/csv")
+    st.dataframe(view[['Date', 'Citations', 'LCDS Author', 'Title', 'Journal', 'DOI']], hide_index=True, use_container_width=True, height=600,
+                 column_config={"DOI": st.column_config.LinkColumn("Link")})
+
+# TAB 2: ANALYTICS
+with tab2:
+    c1, c2 = st.columns(2)
+    with c1:
+        st.subheader("🏆 Top Researchers (by Citations)")
+        if not df_filt.empty:
+            auth = df_filt.groupby('LCDS Author')['Citations'].sum().sort_values(ascending=False).head(10).reset_index()
+            fig = px.bar(auth, x='Citations', y='LCDS Author', orientation='h', color='Citations', color_continuous_scale='Viridis')
+            fig.update_layout(yaxis={'categoryorder':'total ascending'}, plot_bgcolor="rgba(0,0,0,0)")
+            st.plotly_chart(fig, use_container_width=True)
+            
+    with c2:
+        st.subheader("📰 Top Journals (by Citations)")
+        if not df_filt.empty:
+            jour = df_filt[~df_filt['Journal'].isin(['Preprint','Unknown'])].groupby('Journal')['Citations'].sum().sort_values(ascending=False).head(10).reset_index()
+            fig = px.bar(jour, x='Citations', y='Journal', orientation='h', color='Citations', color_continuous_scale='Magma')
+            fig.update_layout(yaxis={'categoryorder':'total ascending'}, plot_bgcolor="rgba(0,0,0,0)")
+            st.plotly_chart(fig, use_container_width=True)
+
+# TAB 3: MAP
+with tab3:
+    st.subheader("Global Impact Map")
     if not df_filt.empty and 'Countries' in df_filt.columns:
-        # Check if we actually have country data
-        has_countries = df_filt['Countries'].str.len().sum() > 0
-        if not has_countries:
-            st.warning("⚠️ Country data is currently empty. The enrichment process runs in the background. Please check back later.")
+        # Check if column has any data
+        if df_filt['Countries'].astype(str).str.len().sum() > 5:
+            df_ex = df_filt.assign(Country=df_filt['Countries'].astype(str).str.split(',')).explode('Country')
+            df_ex['Country'] = df_ex['Country'].str.strip()
+            df_ex = df_ex[df_ex['Country'].str.len() == 2]
+            
+            if not df_ex.empty:
+                stats = df_ex.groupby('Country').agg({'Citations': 'sum', 'DOI': 'count'}).reset_index()
+                # Simplified Coords for speed/reliability
+                coords = {'US': [37, -95], 'GB': [55, -3], 'CN': [35, 104], 'DE': [51, 10], 'FR': [46, 2], 'IT': [41, 12], 'CA': [56, -106], 'AU': [-25, 133], 'NL': [52, 5]}
+                
+                stats['lat'] = stats['Country'].map(lambda x: coords.get(x, [0,0])[0])
+                stats['lon'] = stats['Country'].map(lambda x: coords.get(x, [0,0])[1])
+                stats = stats[stats['lat'] != 0] # Filter unknown coords
+                
+                fig = px.scatter_geo(stats, lat="lat", lon="lon", size="Citations", hover_name="Country", size_max=50, projection="natural earth", color="Citations", color_continuous_scale="Viridis")
+                fig.update_geos(showcountries=True, countrycolor="#444", showcoastlines=True, landcolor="#222", showocean=False)
+                fig.update_layout(margin={"r":0,"t":0,"l":0,"b":0}, paper_bgcolor="rgba(0,0,0,0)", geo_bgcolor="rgba(0,0,0,0)")
+                st.plotly_chart(fig, use_container_width=True)
+            else:
+                st.info("No valid country codes found yet.")
         else:
-            try:
-                df_ex = df_filt.assign(Country=df_filt['Countries'].astype(str).str.split(',')).explode('Country')
-                df_ex['Country'] = df_ex['Country'].str.strip()
-                df_ex = df_ex[df_ex['Country'].str.len() == 2]
-
-                if not df_ex.empty:
-                    stats = df_ex.groupby('Country').agg({'Citations': 'sum', 'DOI': 'count'}).reset_index()
-                    # EXTENDED COORDS
-                    coords = {'US': [37.09, -95.71], 'GB': [55.37, -3.43], 'CN': [35.86, 104.19], 'DE': [51.16, 10.45], 'FR': [46.22, 2.21], 'IT': [41.87, 12.56], 'CA': [56.13, -106.34], 'AU': [-25.27, 133.77], 'JP': [36.20, 138.25], 'NL': [52.13, 5.29], 'ES': [40.46, -3.74], 'SE': [60.12, 18.64], 'CH': [46.81, 8.22], 'BR': [-14.23, -51.92], 'IN': [20.59, 78.96], 'ZA': [-30.55, 22.93], 'RU': [61.52, 105.31], 'KR': [35.90, 127.76], 'SG': [1.35, 103.81], 'BE': [50.50, 4.46], 'DK': [56.26, 9.50], 'NO': [60.47, 8.46], 'FI': [61.92, 25.74], 'IE': [53.14, -7.69], 'AT': [47.51, 14.55], 'PL': [51.91, 19.14], 'CZ': [49.81, 15.47], 'PT': [39.39, -8.22], 'GR': [39.07, 21.82], 'TR': [38.96, 35.24], 'IL': [31.04, 34.85], 'NZ': [-40.90, 174.88], 'MX': [23.63, -102.55], 'AR': [-38.41, -63.61], 'CL': [-35.67, -71.54], 'CO': [4.57, -74.29], 'EG': [26.82, 30.80], 'NG': [9.08, 8.67], 'KE': [-0.02, 37.90], 'SA': [23.88, 45.07], 'AE': [23.42, 53.84], 'IR': [32.42, 53.68], 'PK': [30.37, 69.34], 'BD': [23.68, 90.35], 'TH': [15.87, 100.99], 'VN': [14.05, 108.27], 'ID': [-0.78, 113.92], 'MY': [4.21, 101.97], 'UA': [48.37, 31.16], 'HU': [47.16, 19.50], 'RO': [45.94, 24.96], 'RS': [44.01, 21.00]}
-                    
-                    stats['lat'] = stats['Country'].map(lambda x: coords.get(x, [None, None])[0])
-                    stats['lon'] = stats['Country'].map(lambda x: coords.get(x, [None, None])[1])
-                    plot_data = stats.dropna(subset=['lat'])
-                    
-                    if not plot_data.empty:
-                        fig = px.scatter_geo(plot_data, lat="lat", lon="lon", size="Citations", color="DOI", hover_name="Country", size_max=45, projection="natural earth", color_continuous_scale="Viridis")
-                        fig.update_geos(showcountries=True, countrycolor="#555", showcoastlines=True, landcolor="#262730", showocean=False)
-                        fig.update_layout(margin={"r":0,"t":0,"l":0,"b":0}, paper_bgcolor="rgba(0,0,0,0)", geo_bgcolor="rgba(0,0,0,0)")
-                        st.plotly_chart(fig, use_container_width=True)
-                    else: st.info("Mapping incomplete.")
-            except: st.error("Map error.")
-    else: st.info("Country data missing.")
-
-st.markdown("""<div class="footer">© Leverhulme Centre for Demographic Science - University of Oxford</div>""", unsafe_allow_html=True)
+            st.warning("⚠️ Country data is still populating. The scraper is fetching it row-by-row. Refresh later.")
