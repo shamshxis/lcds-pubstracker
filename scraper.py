@@ -1,58 +1,73 @@
 import requests
-from bs4 import BeautifulSoup
 import pandas as pd
 import os
 import re
 import csv
 from datetime import datetime
+from bs4 import BeautifulSoup
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # --- CONFIGURATION ---
 mailto = os.environ.get('USER_EMAIL', 'research_team@example.com')
-HEADERS = {'User-Agent': f'LCDS-Tracker/Hybrid (mailto:{mailto})'}
+HEADERS = {'User-Agent': f'LCDS-Tracker/Final (mailto:{mailto})'}
+# Pointing to your specific uploaded file
 ORCID_CSV_PATH = "data/lcds_people_orcid_updated.csv"
-START_DATE = "2019-09-01"  # Scrape from Sep 2019
+OUTPUT_CSV_PATH = "data/lcds_publications.csv"
+START_DATE = "2019-09-01"
 
-# --- 1. LOAD CSV DATA ---
-def load_csv_data():
+# --- 1. LOAD & PARSE CSV ---
+def load_csv_roster():
     """
-    Reads the CSV and returns a dictionary:
-    { 'clean_name': {'orcid': '...', 'status': '...'} }
+    Parses the control CSV.
+    Returns a dict: { 'clean_name': {'orcid': '...', 'status': '...'} }
     """
-    data_map = {}
+    roster = {}
     if os.path.exists(ORCID_CSV_PATH):
         try:
             df = pd.read_csv(ORCID_CSV_PATH)
-            # Normalize names and store data
+            # Standardize columns
+            df.columns = [c.strip().title() for c in df.columns]
+            
             for _, row in df.iterrows():
-                if pd.notna(row['Name']):
-                    clean_name = row['Name'].strip().lower()
-                    status = str(row['Status']).strip().title() if pd.notna(row['Status']) else 'Not Found'
-                    orcid = str(row['ORCID']).strip() if pd.notna(row['ORCID']) else None
-                    
-                    data_map[clean_name] = {
-                        'orcid': orcid,
-                        'status': status,
-                        'original_name': row['Name'].strip()
-                    }
-            print(f"[{datetime.now().time()}] Loaded {len(data_map)} entries from CSV.")
-        except Exception as e:
-            print(f"[WARN] Could not load CSV: {e}")
-    return data_map
+                name = row.get('Name', '')
+                if pd.isna(name) or str(name).strip() == '': continue
+                
+                clean_name = name.strip().lower()
+                status = str(row.get('Status', 'Not Found')).strip().lower()
+                orcid = str(row.get('Orcid', '')).strip()
+                
+                if orcid == 'nan': orcid = None
 
-# --- 2. WEBSITE SCRAPER (Fallback) ---
-def get_website_names():
+                roster[clean_name] = {
+                    'original_name': name.strip(),
+                    'status': status, # verified, ignore, not found
+                    'orcid': orcid
+                }
+            print(f"[{datetime.now().time()}] Loaded {len(roster)} people from CSV.")
+        except Exception as e:
+            print(f"[CRITICAL] Failed to load CSV: {e}")
+    else:
+        print(f"[WARNING] CSV file not found at {ORCID_CSV_PATH}")
+    return roster
+
+# --- 2. WEBSITE DISCOVERY (FALLBACK) ---
+def scan_website_for_new_people(existing_roster):
+    """Scrapes website for names NOT in the CSV."""
     url = "https://www.demography.ox.ac.uk/people"
-    print(f"[{datetime.now().time()}] Scraping website for new staff...")
-    names = set()
+    print(f"[{datetime.now().time()}] Scanning website for new additions...")
+    new_finds = []
+    
     try:
         res = requests.get(url, headers=HEADERS, timeout=30)
         soup = BeautifulSoup(res.text, 'html.parser')
         
         selectors = ['h3.paragraph-side-title', '.views-field-title a', '.person-name', 'h3.node__title']
+        found_names = set()
+        
         for s in selectors:
             for el in soup.select(s):
                 raw = el.get_text(strip=True)
+                # Cleanup
                 clean = re.sub(r'^(Dr|Prof|Professor|Mr|Mrs|Ms|Mx)\.?\s+', '', raw, flags=re.IGNORECASE)
                 clean = clean.split(' - ')[0].split(',')[0].strip()
                 
@@ -60,23 +75,32 @@ def get_website_names():
                 if any(x.lower() in clean.lower() for x in junk): continue
                 
                 if 2 <= len(clean.split()) <= 5 and len(clean) < 50:
-                    names.add(clean)
-        return names
-    except: return set()
+                    found_names.add(clean)
+        
+        # Check against roster
+        for name in found_names:
+            if name.lower() not in existing_roster:
+                new_finds.append({
+                    'original_name': name,
+                    'status': 'not found', # Treat as unverified
+                    'orcid': None
+                })
+                
+    except Exception as e:
+        print(f"[ERROR] Website scan failed: {e}")
+        
+    return new_finds
 
-# --- 3. ORCID RESOLVER (For 'Not Found' or New Names) ---
-def resolve_orcid(name):
-    """
-    Finds ORCID via OpenAlex for names without one in CSV.
-    Strictly checks for LCDS/Oxford affiliation.
-    """
+# --- 3. ORCID RESOLVER (FOR 'NOT FOUND' STATUS) ---
+def resolve_missing_orcid(name):
+    """Attempts to find an Oxford/LCDS affiliated ORCID for unknown names."""
     try:
         r = requests.get("https://api.openalex.org/authors", params={'search': name}, headers=HEADERS, timeout=10)
         if r.status_code == 200:
             for res in r.json().get('results', []):
                 if 'orcid' not in res: continue
                 
-                # Check Affiliation History
+                # Affiliation Check
                 affs = [a.get('institution', {}).get('display_name', '').lower() for a in res.get('affiliations', [])]
                 last = res.get('last_known_institution', {}).get('display_name', '').lower()
                 full_text = " ".join(affs + [last])
@@ -86,13 +110,13 @@ def resolve_orcid(name):
     except: pass
     return None
 
-# --- 4. FETCH CROSSREF (Primary Data) ---
-def fetch_crossref(name, orcid):
+# --- 4. DATA FETCHING (CROSSREF + OPENALEX) ---
+def fetch_publications(name, orcid):
     works = []
     if not orcid: return []
     
     try:
-        # Fetch works from Sep 2019
+        # Crossref (Primary - Updated)
         url = f"https://api.crossref.org/works?filter=orcid:{orcid},from-pub-date:{START_DATE}&sort=created&order=desc&rows=100"
         r = requests.get(url, headers=HEADERS, timeout=20)
         
@@ -100,7 +124,7 @@ def fetch_crossref(name, orcid):
             for item in r.json().get('message', {}).get('items', []):
                 if 'DOI' not in item: continue
 
-                # Dates
+                # Date Logic
                 date_obj = item.get('created') or item.get('published-online') or item.get('published-print')
                 final_date = datetime.now().strftime('%Y-%m-%d')
                 if date_obj:
@@ -109,7 +133,6 @@ def fetch_crossref(name, orcid):
                         p = date_obj['date-parts'][0]
                         final_date = f"{p[0]}-{p[1]:02d}-{p[2]:02d}" if len(p)==3 else f"{p[0]}-01-01"
 
-                # Type
                 w_type = "Preprint" if item.get('subtype')=='preprint' or item.get('type')=='posted-content' else "Journal Article"
 
                 works.append({
@@ -122,23 +145,21 @@ def fetch_crossref(name, orcid):
                     'Journal Name': item.get('container-title', [''])[0] if item.get('container-title') else "Preprint/Other",
                     'Citation Count': item.get('is-referenced-by-count', 0),
                     'Publication Type': w_type,
-                    'Country': "Pending",  # Will fill via OpenAlex
-                    'Journal Area': "Pending"
+                    'Country': "Global", # Placeholder
+                    'Journal Area': "Multidisciplinary" # Placeholder
                 })
     except: pass
     return works
 
-# --- 5. ENRICH OPENALEX (Secondary Data) ---
-def enrich_data(records):
+def enrich_with_openalex(records):
+    """Batch updates records with Topic and Country from OpenAlex."""
     if not records: return []
     dois = [r['DOI_Clean'] for r in records]
     
-    # Chunking requests
     def chunker(seq, size): return (seq[pos:pos + size] for pos in range(0, len(seq), size))
     
     meta_map = {}
-    
-    for chunk in chunker(dois, 50):
+    for chunk in chunker(dois, 40):
         try:
             f = "|".join([f"doi:https://doi.org/{d}" for d in chunk])
             url = f"https://api.openalex.org/works?filter={f}&per-page=50&select=doi,primary_topic,authorships"
@@ -147,12 +168,10 @@ def enrich_data(records):
                 for res in r.json().get('results', []):
                     d = res.get('doi', '').replace('https://doi.org/', '').lower().strip()
                     
-                    # 1. Topic
-                    topic = "Multidisciplinary"
-                    if res.get('primary_topic'):
-                        topic = res['primary_topic']['field']['display_name']
+                    # Topic
+                    topic = res.get('primary_topic', {}).get('field', {}).get('display_name', 'Multidisciplinary')
                     
-                    # 2. Country (Extract from authorships)
+                    # Country
                     countries = set()
                     for auth in res.get('authorships', []):
                          for aff in auth.get('institutions', []):
@@ -163,79 +182,69 @@ def enrich_data(records):
         except: pass
 
     for r in records:
-        meta = meta_map.get(r['DOI_Clean'], {})
-        r['Journal Area'] = meta.get('topic', 'Multidisciplinary')
-        r['Country'] = meta.get('country', 'Global')
+        if r['DOI_Clean'] in meta_map:
+            r['Journal Area'] = meta_map[r['DOI_Clean']]['topic']
+            r['Country'] = meta_map[r['DOI_Clean']]['country']
         del r['DOI_Clean']
     return records
 
 # --- WORKER ---
-def process_author(name_entry):
-    name, data = name_entry
+def process_person(person_data):
+    name = person_data['original_name']
+    status = person_data['status']
+    orcid = person_data['orcid']
     
-    # Status Check
-    if data['status'] == 'Ignore': return []
+    # 1. CHECK STATUS
+    if 'ignore' in status:
+        return []
     
-    orcid = data.get('orcid')
-    
-    # If no ORCID (Not Found / New Website Find), try to resolve it
-    if not orcid or str(orcid) == 'nan':
+    # 2. RESOLVE ORCID IF MISSING (BUT NOT IGNORED)
+    if not orcid and 'not found' in status:
         print(f"  [SEARCH] Resolving ORCID for {name}...")
-        orcid = resolve_orcid(name)
-    
+        orcid = resolve_missing_orcid(name)
+        
     if not orcid: return []
     
-    # Fetch & Enrich
-    raw = fetch_crossref(data['original_name'], orcid)
-    return enrich_data(raw)
+    # 3. FETCH & ENRICH
+    raw_data = fetch_publications(name, orcid)
+    return enrich_with_openalex(raw_data)
 
-# --- MAIN EXECUTION ---
+# --- MAIN ---
 if __name__ == "__main__":
     os.makedirs("data", exist_ok=True)
     
-    # 1. Load CSV
-    csv_map = load_csv_data()
+    # 1. Load Control File
+    roster = load_csv_roster()
     
-    # 2. Scrape Website & Merge
-    web_names = get_website_names()
-    final_list = []
+    # 2. Check Website for New People
+    new_people = scan_website_for_new_people(roster)
     
-    # Add CSV entries
-    for clean_name, info in csv_map.items():
-        final_list.append((clean_name, info))
-        
-    # Add NEW Website entries (if not in CSV)
-    for w_name in web_names:
-        clean_w = w_name.lower()
-        if clean_w not in csv_map:
-            final_list.append((clean_w, {
-                'original_name': w_name,
-                'status': 'Not Found', # Treat as unverified
-                'orcid': None
-            }))
-            
-    print(f"Processing {len(final_list)} authors...")
+    # 3. Combine Lists
+    processing_list = list(roster.values()) + new_people
+    print(f"Processing {len(processing_list)} individuals...")
     
-    all_recs = []
+    all_records = []
     with ThreadPoolExecutor(max_workers=5) as exc:
-        futures = {exc.submit(process_author, item): item[0] for item in final_list}
+        futures = {exc.submit(process_person, p): p['original_name'] for p in processing_list}
         for f in as_completed(futures):
             res = f.result()
-            if res: all_recs.extend(res)
+            if res: all_records.extend(res)
             
-    if all_recs:
-        df = pd.DataFrame(all_recs)
+    # 4. Save
+    if all_records:
+        df = pd.DataFrame(all_records)
         df = df.sort_values(by='Date Available Online', ascending=False)
         df = df.drop_duplicates(subset=['DOI'], keep='first')
         
+        # Enforce Column Order
         cols = ['Date Available Online', 'LCDS Author', 'Paper Title', 'Journal Name', 
                 'Journal Area', 'Publication Type', 'Citation Count', 'Country', 'DOI', 'Year']
         for c in cols:
              if c not in df.columns: df[c] = ""
-        
         df = df[cols]
-        df.to_csv("data/lcds_publications.csv", index=False)
-        print(f"SUCCESS: Saved {len(df)} records.")
+        
+        df.to_csv(OUTPUT_CSV_PATH, index=False)
+        print(f"SUCCESS: Saved {len(df)} records to {OUTPUT_CSV_PATH}")
     else:
         print("WARNING: No records found.")
-        pd.DataFrame(columns=['Date Available Online']).to_csv("data/lcds_publications.csv", index=False)
+        pd.DataFrame(columns=['Date Available Online']).to_csv(OUTPUT_CSV_PATH, index=False)
