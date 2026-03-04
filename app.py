@@ -40,14 +40,11 @@ def load_data():
     if not os.path.exists(file): return pd.DataFrame()
     
     try:
-        # Load safely
         df = pd.read_csv(file, on_bad_lines='skip', engine='python')
         
-        # Normalize columns
         rename = {'author':'LCDS Author', 'citations':'Citations', 'year':'Year', 'date':'Date', 'title':'Title', 'journal':'Journal', 'countries':'Countries'}
         df.rename(columns=lambda x: rename.get(x.lower(), x), inplace=True)
         
-        # Fill missing
         for c in ['Date','Year','Citations','LCDS Author','Title','Journal','Countries']:
             if c not in df.columns: df[c] = 0 if c in ['Citations','Year'] else ""
             
@@ -107,7 +104,8 @@ with tab1:
     else: view = view.sort_values("LCDS Author")
     
     col3.markdown("<br>", unsafe_allow_html=True)
-    col3.download_button("📥 Download CSV", view.to_csv(index=False).encode('utf-8'), f"lcds_{period.replace(' ','_')}.csv", "text/csv")
+    if not view.empty:
+        col3.download_button("📥 Download CSV", view.to_csv(index=False).encode('utf-8'), f"lcds_{period.replace(' ','_')}.csv", "text/csv")
     
     if view.empty: st.info("No publications found for this period.")
     else: st.dataframe(view[['Date','Citations','LCDS Author','Title','Journal']], use_container_width=True, hide_index=True)
@@ -138,7 +136,7 @@ with tab3:
         valid = df_filt[df_filt['Countries'].str.len() > 1].copy()
         if not valid.empty:
             map_df = valid.assign(Country=valid['Countries'].str.split(',')).explode('Country')
-            map_df = map_df[map_df['Country'].str.len() == 2]
+            map_df = map_df[map_df['Country'].str.strip().str.len() == 2]
             stats = map_df.groupby('Country')['Citations'].sum().reset_index()
             
             st.plotly_chart(px.scatter_geo(stats, locations='Country', size='Citations', color='Citations', projection='natural earth', color_continuous_scale='Plasma'), use_container_width=True)
