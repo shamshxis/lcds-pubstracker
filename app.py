@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 from datetime import datetime, timedelta
+import time
 
 # --- PAGE CONFIG ---
 st.set_page_config(page_title="LCDS Impact Tracker", page_icon="🎓", layout="wide")
@@ -10,43 +11,62 @@ st.set_page_config(page_title="LCDS Impact Tracker", page_icon="🎓", layout="w
 st.markdown("""
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap');
+        h1, h2, h3 { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-weight: 700; }
+        
         .trendy-sub {
             background: linear-gradient(90deg, #002147 0%, #C49102 100%);
             -webkit-background-clip: text; -webkit-text-fill-color: transparent;
             font-size: 1.5rem; font-weight: 600; margin-bottom: 20px;
         }
+        
         .footer {
             position: fixed; left: 0; bottom: 0; width: 100%;
             background-color: #002147; color: white; text-align: center;
             padding: 10px; font-size: 0.8rem; z-index: 1000;
         }
         .footer a { color: #FFD700; text-decoration: none; font-weight: bold; }
+        .block-container { padding-bottom: 60px; }
     </style>
 """, unsafe_allow_html=True)
 
-# --- LOAD DATA ---
-@st.cache_data(ttl=3600)
+# --- LOAD DATA FUNCTION ---
+# Using cache to prevent constant reloading, but allowing manual clear
+@st.cache_data(ttl=3600) 
 def load_data():
-    url = "https://raw.githubusercontent.com/shamshxis/lcds-pubstracker/data/data/lcds_publications.csv"
+    url = "data/lcds_publications.csv" # Local path in repo
+    # Fallback to GitHub raw if local not found (for testing/deployment variations)
+    if not pd.io.common.file_exists(url):
+        url = "https://raw.githubusercontent.com/shamshxis/lcds-pubstracker/data/data/lcds_publications.csv"
+        
     try:
         df = pd.read_csv(url)
+        # Type Conversion
         df['Date Available Online'] = pd.to_datetime(df['Date Available Online'], errors='coerce')
         df['Citation Count'] = pd.to_numeric(df['Citation Count'], errors='coerce').fillna(0)
         df['Year'] = pd.to_numeric(df['Year'], errors='coerce').fillna(datetime.now().year)
         if 'Country' not in df.columns: df['Country'] = "Global"
         return df
-    except: return pd.DataFrame()
+    except Exception as e:
+        return pd.DataFrame()
+
+# --- SIDEBAR & REFRESH LOGIC ---
+st.sidebar.title("🔍 Controls")
+
+# Force Refresh Button
+if st.sidebar.button("🔄 Force Refresh Data"):
+    st.cache_data.clear()
+    st.toast("Cache cleared! Reloading data...", icon="✅")
+    time.sleep(1) # Visual pause
+    st.rerun()
 
 df = load_data()
 
-# --- SIDEBAR FILTERS ---
-st.sidebar.title("🔍 Filters")
 if df.empty:
-    st.warning("⚠️ Data loading... check back shortly.")
+    st.warning("⚠️ Data is currently being updated or is empty. Please wait a moment and click Refresh.")
     st.stop()
 
 # Time Filter
-time_opt = st.sidebar.radio("Period", ["Since Sep 2019", "Last Year", "Last Month", "Last Week"], index=0)
+time_opt = st.sidebar.radio("Time Period", ["Since Sep 2019", "Last Year", "Last Month", "Last Week"], index=0)
 now = datetime.now()
 
 if time_opt == "Last Week": start = now - timedelta(days=7)
@@ -56,53 +76,51 @@ else: start = pd.to_datetime("2019-09-01")
 
 df_filtered = df[df['Date Available Online'] >= start].copy()
 
-# Download Button
+# CSV Download
 st.sidebar.markdown("---")
-csv = df_filtered.to_csv(index=False).encode('utf-8')
-st.sidebar.download_button("📥 Download Current View CSV", csv, f"lcds_data_{time_opt.replace(' ', '_')}.csv", "text/csv")
+st.sidebar.subheader("📥 Export")
+csv_data = df_filtered.to_csv(index=False).encode('utf-8')
+st.sidebar.download_button("Download Current View CSV", csv_data, f"lcds_data_{time_opt.replace(' ', '_')}.csv", "text/csv")
 
-# --- MAIN DASHBOARD ---
+# --- DASHBOARD ---
 st.title("Leverhulme Centre for Demographic Science")
 st.markdown('<div class="trendy-sub">Measuring our impact across the years.</div>', unsafe_allow_html=True)
 
-# 1. METRICS
+# Metrics
 c1, c2, c3, c4 = st.columns(4)
 c1.metric("Publications", len(df_filtered))
 c2.metric("Total Citations", int(df_filtered['Citation Count'].sum()))
 c3.metric("Preprints", len(df_filtered[df_filtered['Publication Type'] == 'Preprint']))
-c4.metric("Countries Reached", df_filtered['Country'].nunique())
+c4.metric("Global Reach", df_filtered['Country'].nunique())
 
 st.divider()
 
-# 2. CHARTS ROW 1
+# Charts Row 1
 col1, col2 = st.columns(2)
 with col1:
-    st.subheader("📈 Citations Over Time")
+    st.subheader("📈 Citations Trend")
     df_yearly = df_filtered.groupby('Year')['Citation Count'].sum().reset_index()
     if not df_yearly.empty:
         fig = px.bar(df_yearly, x='Year', y='Citation Count', title="Citations per Year", color_discrete_sequence=['#002147'])
         st.plotly_chart(fig, use_container_width=True)
-    else: st.info("No data.")
+    else: st.info("No citation data for this period.")
 
 with col2:
     st.subheader("🌍 Collaboration Map")
-    # Simple map based on Country codes
     if 'Country' in df_filtered.columns:
-        # Split multiple countries if comma separated
-        country_series = df_filtered['Country'].str.split(', ').explode()
-        df_map = country_series.value_counts().reset_index()
-        df_map.columns = ['Country Code', 'Count']
-        if not df_map.empty:
-            fig_map = px.choropleth(df_map, locations="Country Code", color="Count", 
-                                    hover_name="Country Code", title="Global Reach (Author Affiliations)",
-                                    color_continuous_scale=px.colors.sequential.Plasma)
+        # Simple parsing of multiple countries
+        countries = df_filtered['Country'].str.split(', ').explode().value_counts().reset_index()
+        countries.columns = ['Country Code', 'Count']
+        if not countries.empty:
+            fig_map = px.choropleth(countries, locations="Country Code", color="Count",
+                                    hover_name="Country Code", title="Author Affiliations",
+                                    color_continuous_scale="Plasma")
             st.plotly_chart(fig_map, use_container_width=True)
-    else: st.info("No country data.")
 
-# 3. CHARTS ROW 2
+# Charts Row 2
 col3, col4 = st.columns(2)
 with col3:
-    st.subheader("📊 Impact by Field")
+    st.subheader("📊 Research Areas")
     df_area = df_filtered.groupby('Journal Area')['Citation Count'].sum().reset_index()
     df_area = df_area[df_area['Journal Area'] != 'Multidisciplinary']
     if not df_area.empty:
@@ -111,21 +129,21 @@ with col3:
         st.plotly_chart(fig_pie, use_container_width=True)
 
 with col4:
-    st.subheader("📑 Publication Types")
+    st.subheader("📑 Output Type")
     df_type = df_filtered['Publication Type'].value_counts().reset_index()
     df_type.columns = ['Type', 'Count']
     fig_type = px.pie(df_type, values='Count', names='Type', hole=0.4, color_discrete_sequence=px.colors.qualitative.Safe)
     st.plotly_chart(fig_type, use_container_width=True)
 
-# 4. DATA TABLE
-st.subheader("📄 Recent Publications")
+# Data Table
+st.subheader("📄 Publications List")
 st.dataframe(
     df_filtered[['Date Available Online', 'LCDS Author', 'Paper Title', 'Journal Name', 'Citation Count', 'DOI']],
     use_container_width=True,
     column_config={"DOI": st.column_config.LinkColumn("DOI Link")}
 )
 
-# --- FOOTER ---
+# Footer
 st.markdown("""
     <div class="footer">
         © Certified University of Oxford 2026 - All Rights Reserved. | 
