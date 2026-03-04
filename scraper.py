@@ -6,10 +6,10 @@ import os
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-# --- CONFIGURATION (Directly from your Colab Logic) ---
-HEADERS = {'User-Agent': 'OxfordSubUnitTracker/1.8 (mailto:research@demography.ox.ac.uk)'}
-# These are the mandatory keywords to verify a researcher is 'ours'
-LCDS_SIGNATURES = ['leverhulme', 'lcds', 'demographic science', 'nuffield', 'sociology', 'population']
+# --- CONFIGURATION (Matches your Colab logic exactly) ---
+HEADERS = {'User-Agent': 'LCDS-Impact-Tracker/2.0 (mailto:research@demography.ox.ac.uk)'}
+# Mandatory keywords to verify the researcher belongs to LCDS
+TARGET_KEYWORDS = ['leverhulme', 'lcds', 'demographic science', 'nuffield', 'sociology', 'population']
 
 def get_staff_list():
     url = "https://www.demography.ox.ac.uk/people"
@@ -23,9 +23,7 @@ def get_staff_list():
     except: return ["Ursula Gazeley"]
 
 def resolve_verified_orcid(name):
-    """
-    Only returns an ORCID if the profile explicitly links to LCDS or Oxford Social Sciences.
-    """
+    """Only returns an ORCID if the profile explicitly links to LCDS/Demography."""
     try:
         res = requests.get("https://api.openalex.org/authors", params={'search': name}, headers=HEADERS, timeout=15)
         if res.status_code == 200:
@@ -33,26 +31,25 @@ def resolve_verified_orcid(name):
                 orcid = author.get('orcid')
                 if not orcid: continue
                 
-                # Check institutional and topic metadata
+                # Check institutional and topic metadata for 'LCDS signature'
                 affs = " ".join([a.get('institution', {}).get('display_name', '').lower() for a in author.get('affiliations', [])])
                 last = author.get('last_known_institution', {}).get('display_name', '').lower()
                 topics = " ".join([t.get('display_name', '').lower() for t in author.get('topics', [])])
                 metadata = affs + last + topics
                 
-                # --- THE FILTER ---
-                # Must be at Oxford AND in a relevant social science/demography field
-                if 'oxford' in metadata and any(sig in metadata for sig in LCDS_SIGNATURES):
+                # Verification: Must be at Oxford AND match an LCDS-related keyword
+                if 'oxford' in metadata and any(sig in metadata for sig in TARGET_KEYWORDS):
                     return orcid.replace('https://orcid.org/', '')
     except: pass
     return None
 
-def fetch_wide_net_papers(name):
+def fetch_lcds_papers(name):
     orcid = resolve_verified_orcid(name)
     if not orcid: return []
     
     papers = []
-    # Fetch from OpenAlex for impact metadata
     try:
+        # Pulling Wide Net: OpenAlex and Crossref
         res = requests.get(f"https://api.openalex.org/works?filter=author.orcid:https://orcid.org/{orcid}", headers=HEADERS, timeout=15)
         if res.status_code == 200:
             for r in res.json().get('results', []):
@@ -73,14 +70,14 @@ if __name__ == "__main__":
     staff = get_staff_list()
     results = []
     with ThreadPoolExecutor(max_workers=8) as exc:
-        futures = {exc.submit(fetch_wide_net_papers, n): n for n in staff}
+        futures = {exc.submit(fetch_lcds_papers, n): n for n in staff}
         for f in as_completed(futures): results.extend(f.result())
     
     if results:
         df = pd.DataFrame(results).drop_duplicates(subset=['DOI'])
-        # Filter for 2025+ and Preprints as per Colab logic
+        # Colab Logic: Focus on 2024-2027 and Preprints
         df['year_str'] = df['Year'].astype(str)
-        df = df[(df['year_str'].isin(['2025', '2026', '2027', 'Preprint'])) | (df['Publication Type'] == 'Preprint')]
+        df = df[(df['year_str'].isin(['2024', '2025', '2026', '2027', 'Preprint'])) | (df['Publication Type'] == 'Preprint')]
         
         os.makedirs("data", exist_ok=True)
         df.to_csv("data/lcds_publications.csv", index=False)
