@@ -6,17 +6,17 @@ import time
 from datetime import datetime
 
 # --- CONFIGURATION ---
-HEADERS = {'User-Agent': 'LCDS-Tracker/Final-v3'}
+HEADERS = {'User-Agent': 'LCDS-Tracker/Final-Production'}
 CSV_FILE = "data/lcds_publications.csv"
 
-# --- KNOWN ORCIDS (The "Golden List") ---
-# This bypasses the search entirely for problematic names
+# --- THE GOLDEN LIST (Hardcoded ORCIDs to prevent errors) ---
+# Andrew Stephen is explicitly set to the Marketing Professor ORCID
 KNOWN_ORCIDS = {
     "Andrew Stephen": "0000-0001-9156-6461",  # Marketing (Saïd Business School)
     "Wen Su": "0000-0001-5722-6805",          # Engineering/Demography
     "Melinda Mills": "0000-0003-0194-6131",
     "Jennifer Dowd": "0000-0003-2007-3598",
-    "Thomas Rawson": "0000-0002-3908-1188",   # Zoology/Epi
+    "Thomas Rawson": "0000-0002-3908-1188",
     "Per Block": "0000-0002-8664-9008",
     "Ridhu Kashyap": "0000-0003-1620-8041"
 }
@@ -46,7 +46,7 @@ def get_staff_list():
             if len(n) > 3 and "View profile" not in n:
                 clean_names.append(n)
 
-        # 4. Force Inclusions from Golden List
+        # 4. Force Inclusions (Golden List)
         for name in KNOWN_ORCIDS.keys():
             if name not in clean_names: clean_names.append(name)
             
@@ -57,11 +57,11 @@ def get_staff_list():
 
 # --- 2. ORCID IDENTIFICATION ---
 def get_orcid(name):
-    # 1. Check Golden List FIRST
+    # A. Check Golden List FIRST (Bypasses search for Andrew Stephen)
     if name in KNOWN_ORCIDS:
         return KNOWN_ORCIDS[name]
 
-    # 2. Search OpenAlex (Fallback for others)
+    # B. Search OpenAlex (Fallback)
     try:
         r = requests.get("https://api.openalex.org/authors", params={'search': name}, headers=HEADERS, timeout=5)
         if r.status_code == 200:
@@ -70,17 +70,16 @@ def get_orcid(name):
                 affils = " ".join([a.get('institution', {}).get('display_name', '').lower() for a in person.get('affiliations', [])])
                 affils += " " + person.get('last_known_institution', {}).get('display_name', '').lower()
                 
-                # Oxford Check
+                # Filters
                 if "oxford" not in affils: continue
                 
-                # Topic Check
                 valid = ["demographic", "sociology", "nuffield", "leverhulme", "zoology", "economics", "epidemiology", "public health", "statistics"]
                 if any(v in affils for v in valid):
                     return person['orcid'].split('/')[-1]
     except: pass
     return None
 
-# --- 3. FETCH WORKS ---
+# --- 3. FETCH WORKS + COUNTRY DATA ---
 def fetch_works(name, orcid):
     works = []
     try:
@@ -93,10 +92,11 @@ def fetch_works(name, orcid):
                 d = item.get('created', {}).get('date-parts', [[2020,1,1]])[0]
                 date_str = f"{d[0]}-{d[1]:02d}-01" if len(d)>=2 else f"{d[0]}-01-01"
                 
-                # Country Enrichment
+                # --- COUNTRY ENRICHMENT (Restored) ---
                 countries = ""
                 try:
                     if 'DOI' in item:
+                        # Call OpenAlex per DOI to get Affiliation Country
                         oa_url = f"https://api.openalex.org/works/doi:https://doi.org/{item['DOI']}?select=authorships"
                         oa_r = requests.get(oa_url, headers=HEADERS, timeout=2)
                         if oa_r.status_code == 200:
@@ -106,6 +106,7 @@ def fetch_works(name, orcid):
                                     if i.get('country_code'): cs.add(i['country_code'])
                             countries = ",".join(cs)
                 except: pass
+                # -------------------------------------
 
                 works.append({
                     'Date': date_str,
