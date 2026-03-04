@@ -12,20 +12,16 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded"
 )
-
-# Force Dark Mode for Charts
 pio.templates.default = "plotly_dark"
 
-# --- 2. CLASSY OXFORD DARK MODE CSS ---
+# --- 2. CLASSY DARK CSS ---
 st.markdown("""
     <style>
-        /* APP BACKGROUND */
+        /* General App Styling */
         .stApp { background-color: #0b0c10; color: #c5c6c7; }
-        
-        /* SIDEBAR */
         [data-testid="stSidebar"] { background-color: #1f2833; border-right: 1px solid #45a29e; }
         
-        /* HEADERS */
+        /* Headers */
         .gold-header {
             background: linear-gradient(90deg, #D4AF37, #F2F2F2);
             -webkit-background-clip: text; -webkit-text-fill-color: transparent;
@@ -33,7 +29,7 @@ st.markdown("""
         }
         .sub-text { color: #66fcf1; font-size: 1.1rem; margin-bottom: 2rem; border-bottom: 1px solid #45a29e; padding-bottom: 1rem; }
 
-        /* METRICS */
+        /* Metric Cards */
         div[data-testid="stMetric"] {
             background-color: #1a1d26; border: 1px solid #45a29e; border-radius: 10px; padding: 15px;
             box-shadow: 0 4px 6px rgba(0,0,0,0.3); transition: 0.3s;
@@ -42,7 +38,7 @@ st.markdown("""
         div[data-testid="stMetricValue"] { color: #D4AF37 !important; font-size: 2.2rem !important; font-weight: 700; }
         div[data-testid="stMetricLabel"] { color: #c5c6c7 !important; }
 
-        /* DATAFRAME & TABS */
+        /* Tables & Tabs */
         [data-testid="stDataFrame"] { border: 1px solid #333; background-color: #1a1d26; }
         .stTabs [data-baseweb="tab-list"] { gap: 10px; }
         .stTabs [data-baseweb="tab"] { height: 50px; background-color: #1f2833; border-radius: 5px; color: #c5c6c7; }
@@ -50,22 +46,36 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- 3. DATA LOADING (CRASH PROOF) ---
-def get_data(force_refresh=False):
-    if force_refresh: st.cache_data.clear()
-    
+# --- 3. ROBUST DATA LOADING ---
+@st.cache_data(ttl=3600)
+def load_data():
     try:
         file_path = "data/lcds_publications.csv"
         if not os.path.exists(file_path): return pd.DataFrame()
         
-        # --- THE FIX: Skip bad lines to prevent crash ---
+        # 1. Load with error skipping (Fixes "Expected 9 fields saw 12" error)
         try:
             df = pd.read_csv(file_path, on_bad_lines='skip', engine='python')
         except:
-            # Fallback for older pandas versions
             df = pd.read_csv(file_path, error_bad_lines=False, engine='python')
+
+        # 2. Normalize Column Names (Fixes "KeyError" if scraper changed)
+        # Map common scraper variations to App standard
+        rename_map = {
+            'author': 'LCDS Author',
+            'doi': 'DOI',
+            'citations': 'Citations',
+            'year': 'Year',
+            'date': 'Date',
+            'title': 'Title',
+            'journal': 'Journal',
+            'type': 'Type',
+            'countries': 'Countries',
+            'source': 'Journal' # Fallback
+        }
+        df.rename(columns=lambda x: rename_map.get(x.lower(), x), inplace=True)
         
-        # Ensure Critical Columns Exist
+        # 3. Ensure Critical Columns Exist
         req_cols = ['Date', 'Year', 'LCDS Author', 'Title', 'Journal', 'Type', 'Citations', 'DOI', 'Countries']
         for c in req_cols:
             if c not in df.columns:
@@ -73,41 +83,48 @@ def get_data(force_refresh=False):
                 elif c == 'Year': df[c] = datetime.now().year
                 else: df[c] = "Unknown" if c != 'Countries' else ""
         
-        # Clean Types
+        # 4. Clean Data Types
         df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
         df['Year'] = pd.to_numeric(df['Year'], errors='coerce').fillna(0).astype(int)
         df['Citations'] = pd.to_numeric(df['Citations'], errors='coerce').fillna(0)
         
+        # Drop rows with no valid date (Optional cleanup)
+        df = df.dropna(subset=['Date'])
+        
         return df
     except Exception as e:
-        st.error(f"Data Error: {e}")
+        # st.error(f"Data Error: {e}") # Hide error from UI
         return pd.DataFrame()
 
-# Sidebar Refresh Logic
+# Sidebar Refresh
 with st.sidebar:
     st.image("https://upload.wikimedia.org/wikipedia/commons/thumb/f/f2/University_of_Oxford.svg/1200px-University_of_Oxford.svg.png", width=140)
     if st.button("🔄 Force Reload Data", type="primary", use_container_width=True):
         st.cache_data.clear()
         st.rerun()
 
-df = get_data()
+df = load_data()
 
-# --- 4. SIDEBAR FILTERS ---
+# --- 4. FILTERS ---
 with st.sidebar:
     st.markdown("### 🔍 Filters")
     if df.empty:
-        st.error("📉 CSV is empty or corrupted. Please run scraper.")
+        st.error("📉 CSV is empty. Please run scraper.")
         st.stop()
         
-    period = st.radio("Time Period", ["All Time (2019+)", "Last 2 Years", "Last Year", "Last Month"], index=0)
+    # Extended Options
+    period = st.radio("Time Period", ["All Time (2019+)", "Last 2 Years", "Last Year", "Last Month", "Last Week"], index=0)
     
+    # Logic
     now = datetime.now()
-    if "Month" in period: start = now - timedelta(days=30)
+    if "Week" in period: start = now - timedelta(days=7)
+    elif "Month" in period: start = now - timedelta(days=30)
     elif "Year" in period and "2" not in period: start = now - timedelta(days=365)
     elif "2 Years" in period: start = now - timedelta(days=730)
     else: start = pd.to_datetime("2019-09-01")
     
     df_filt = df[df['Date'] >= start].copy()
+    
     st.markdown("---")
     st.caption(f"Loaded **{len(df)}** records.")
 
@@ -115,64 +132,84 @@ with st.sidebar:
 st.markdown('<div class="gold-header">Leverhulme Centre for Demographic Science</div>', unsafe_allow_html=True)
 st.markdown('<div class="sub-text">Tracking research output, citation impact, and global collaborations.</div>', unsafe_allow_html=True)
 
-m1, m2, m3, m4 = st.columns(4)
-m1.metric("📚 Publications", f"{len(df_filt):,}")
-m2.metric("💬 Total Citations", f"{int(df_filt['Citations'].sum()):,}")
-m3.metric("📝 Preprints", f"{len(df_filt[df_filt['Type'].str.contains('Preprint', case=False, na=False)]):,}")
-m4.metric("👥 Active Researchers", f"{df_filt['LCDS Author'].nunique()}")
+# Metrics
+c1, c2, c3, c4 = st.columns(4)
+c1.metric("📚 Publications", f"{len(df_filt):,}")
+c2.metric("💬 Total Citations", f"{int(df_filt['Citations'].sum()):,}")
+c3.metric("📝 Preprints", f"{len(df_filt[df_filt['Type'].str.contains('Preprint', case=False, na=False)]):,}")
+c4.metric("👥 Active Researchers", f"{df_filt['LCDS Author'].nunique()}")
 
 st.markdown("---")
 
 tab1, tab2, tab3 = st.tabs(["📄 **Database**", "📊 **Impact Analytics**", "🌍 **Global Map**"])
 
-# TAB 1: DATABASE
+# === TAB 1: DATABASE ===
 with tab1:
-    c_search, c_sort, c_dl = st.columns([3, 1, 1])
-    search = c_search.text_input("Search", placeholder="Title, Author, or Journal...").lower()
-    sort = c_sort.selectbox("Sort", ["Newest First", "Most Cited", "Author A-Z"])
-    
-    view = df_filt.copy()
-    if search:
-        view = view[view['Title'].str.lower().str.contains(search, na=False) | view['LCDS Author'].str.lower().str.contains(search, na=False)]
-    
-    if "Newest" in sort: view = view.sort_values("Date", ascending=False)
-    elif "Cited" in sort: view = view.sort_values("Citations", ascending=False)
-    elif "Author" in sort: view = view.sort_values("LCDS Author")
-    
-    c_dl.markdown("<br>", unsafe_allow_html=True)
-    c_dl.download_button("📥 Download CSV", view.to_csv(index=False).encode('utf-8'), "lcds_export.csv", "text/csv", use_container_width=True)
-    
-    st.dataframe(view[['Date', 'Citations', 'LCDS Author', 'Title', 'Journal', 'DOI']], hide_index=True, use_container_width=True, height=600, column_config={"DOI": st.column_config.LinkColumn("Link"), "Date": st.column_config.DateColumn("Date", format="YYYY-MM-DD")})
+    if df_filt.empty:
+        st.info(f"📅 No publications found for **{period}**.")
+    else:
+        c_search, c_sort, c_dl = st.columns([3, 1, 1])
+        search = c_search.text_input("Search", placeholder="Title, Author, or Journal...").lower()
+        sort = c_sort.selectbox("Sort", ["Newest First", "Most Cited", "Author A-Z"])
+        
+        view = df_filt.copy()
+        if search:
+            view = view[view['Title'].str.lower().str.contains(search, na=False) | view['LCDS Author'].str.lower().str.contains(search, na=False)]
+        
+        if "Newest" in sort: view = view.sort_values("Date", ascending=False)
+        elif "Cited" in sort: view = view.sort_values("Citations", ascending=False)
+        elif "Author" in sort: view = view.sort_values("LCDS Author")
+        
+        c_dl.markdown("<br>", unsafe_allow_html=True)
+        c_dl.download_button("📥 Download CSV", view.to_csv(index=False).encode('utf-8'), "lcds_export.csv", "text/csv", use_container_width=True)
+        
+        st.dataframe(view[['Date', 'Citations', 'LCDS Author', 'Title', 'Journal', 'DOI']], hide_index=True, use_container_width=True, height=600, column_config={"DOI": st.column_config.LinkColumn("Link"), "Date": st.column_config.DateColumn("Date", format="YYYY-MM-DD")})
 
-# TAB 2: ANALYTICS
+# === TAB 2: ANALYTICS ===
 with tab2:
-    if not df_filt.empty:
+    if df_filt.empty:
+        st.info("📊 No data available for analytics in this period.")
+    else:
         c1, c2 = st.columns(2)
         with c1:
             st.markdown("### 🏆 Top Researchers (Impact)")
-            top_auth = df_filt.groupby('LCDS Author')['Citations'].sum().sort_values(ascending=False).head(10).reset_index()
-            fig = px.bar(top_auth, x='Citations', y='LCDS Author', orientation='h', text_auto=True, color='Citations', color_continuous_scale='Plasma')
-            fig.update_layout(yaxis={'categoryorder':'total ascending', 'title': None}, xaxis={'title': None}, plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', font=dict(color='#c5c6c7'), coloraxis_showscale=False)
-            st.plotly_chart(fig, use_container_width=True)
+            if df_filt['Citations'].sum() > 0:
+                top_auth = df_filt.groupby('LCDS Author')['Citations'].sum().sort_values(ascending=False).head(10).reset_index()
+                fig = px.bar(top_auth, x='Citations', y='LCDS Author', orientation='h', text_auto=True, color='Citations', color_continuous_scale='Plasma')
+                fig.update_layout(yaxis={'categoryorder':'total ascending', 'title': None}, xaxis={'title': None}, plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', font=dict(color='#c5c6c7'), coloraxis_showscale=False)
+                st.plotly_chart(fig, use_container_width=True)
+            else:
+                st.info("No citations recorded yet for this selection.")
+                
         with c2:
             st.markdown("### 📰 Top Journals")
-            top_jour = df_filt[~df_filt['Journal'].isin(['Preprint','Unknown'])].groupby('Journal')['Citations'].sum().sort_values(ascending=False).head(10).reset_index()
-            fig = px.bar(top_jour, x='Citations', y='Journal', orientation='h', text_auto=True, color='Citations', color_continuous_scale='Viridis')
-            fig.update_layout(yaxis={'categoryorder':'total ascending', 'title': None}, xaxis={'title': None}, plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', font=dict(color='#c5c6c7'), coloraxis_showscale=False)
-            st.plotly_chart(fig, use_container_width=True)
+            # Filter unknown journals
+            valid_journals = df_filt[~df_filt['Journal'].isin(['Preprint','Unknown', ''])]
+            if not valid_journals.empty:
+                top_jour = valid_journals.groupby('Journal')['Citations'].sum().sort_values(ascending=False).head(10).reset_index()
+                fig = px.bar(top_jour, x='Citations', y='Journal', orientation='h', text_auto=True, color='Citations', color_continuous_scale='Viridis')
+                fig.update_layout(yaxis={'categoryorder':'total ascending', 'title': None}, xaxis={'title': None}, plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', font=dict(color='#c5c6c7'), coloraxis_showscale=False)
+                st.plotly_chart(fig, use_container_width=True)
+            else:
+                st.info("No journal data available.")
         
+        # Timeline
         st.markdown("### 📈 Citation Growth")
         timeline = df_filt.groupby('Year')['Citations'].sum().reset_index()
-        fig = px.area(timeline, x='Year', y='Citations', markers=True)
-        fig.update_traces(line_color='#D4AF37', fill_color='rgba(212, 175, 55, 0.3)')
-        fig.update_layout(plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', font=dict(color='#c5c6c7'), xaxis=dict(showgrid=False), yaxis=dict(showgrid=True, gridcolor='#333'))
-        st.plotly_chart(fig, use_container_width=True)
+        if not timeline.empty:
+            fig = px.area(timeline, x='Year', y='Citations', markers=True)
+            fig.update_traces(line_color='#D4AF37', fill_color='rgba(212, 175, 55, 0.3)')
+            fig.update_layout(plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', font=dict(color='#c5c6c7'), xaxis=dict(showgrid=False), yaxis=dict(showgrid=True, gridcolor='#333'))
+            st.plotly_chart(fig, use_container_width=True)
 
-# TAB 3: MAP
+# === TAB 3: MAP ===
 with tab3:
     st.markdown("### 🌍 Global Impact Map")
-    if not df_filt.empty and 'Countries' in df_filt.columns:
+    if df_filt.empty:
+        st.info("No data to map.")
+    elif 'Countries' in df_filt.columns:
         valid_map_data = df_filt[df_filt['Countries'].astype(str).str.len() > 1].copy()
+        
         if not valid_map_data.empty:
             map_df = valid_map_data.assign(Country=valid_map_data['Countries'].astype(str).str.split(',')).explode('Country')
             map_df = map_df[map_df['Country'].str.strip().str.len() == 2]
@@ -190,3 +227,4 @@ with tab3:
                 st.plotly_chart(fig, use_container_width=True)
             else: st.info("No valid country data found.")
         else: st.warning("⚠️ Country data is populating. Check back later.")
+    else: st.info("Country data missing.")
