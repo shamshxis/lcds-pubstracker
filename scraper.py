@@ -8,7 +8,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # --- CONFIGURATION ---
 mailto = os.environ.get('USER_EMAIL', 'research_team@example.com')
-HEADERS = {'User-Agent': f'OxfordSubUnitTracker/4.0 (mailto:{mailto})'}
+HEADERS = {'User-Agent': f'OxfordSubUnitTracker/5.0 (mailto:{mailto})'}
 
 def get_staff_list():
     """
@@ -25,9 +25,6 @@ def get_staff_list():
         soup = BeautifulSoup(res.text, 'html.parser')
 
         # --- WIDE NET SELECTORS ---
-        # 1. h3.paragraph-side-title: YOUR PRIORITY TAG (First in list)
-        # 2. .views-field-title a: Standard Drupal view
-        # 3. .person-name: Generic profile class
         selectors = [
             'h3.paragraph-side-title', 
             '.views-field-title a', 
@@ -41,20 +38,16 @@ def get_staff_list():
                 raw_name = el.get_text(strip=True)
                 
                 # --- CLEANING ---
-                # Remove titles if present
                 clean = raw_name.replace('Dr ', '').replace('Prof ', '').replace('Professor ', '').strip()
-                
-                # Filter out junk text that might get caught
                 junk_terms = ["View profile", "Read more", "Contact", "Email"]
                 if any(x in clean for x in junk_terms):
                     continue
                 
-                # Must be at least 2 words (First Last) and not super long (likely a sentence)
                 if clean and len(clean.split()) >= 2 and len(clean) < 50:
                     names.add(clean)
         
         staff_list = sorted(list(names))
-        print(f"[{datetime.now().time()}] Successfully found {len(staff_list)} people on the website.")
+        print(f"[{datetime.now().time()}] Successfully found {len(staff_list)} people.")
         return staff_list
 
     except Exception as e:
@@ -83,20 +76,23 @@ def standardize_date(date_parts):
     return None
 
 def fetch_crossref_works(name, orcid):
-    """PRIMARY FETCH: Gets everything from CrossRef directly (Crossref Dominant)."""
+    """
+    PRIMARY FETCH: Gets everything from CrossRef directly.
+    Prioritizes 'created' date to catch extremely recent items.
+    """
     works = []
     if not orcid: return []
 
     try:
-        # Sort by 'created' to get the absolute newest items (Preprints/Recent)
-        url = f"https://api.crossref.org/works?filter=orcid:{orcid},from-pub-date:2019-01-01&sort=created&order=desc&rows=100"
+        # Sort by 'created' to get the absolute newest DOIs first
+        url = f"https://api.crossref.org/works?filter=orcid:{orcid},from-pub-date:2020-01-01&sort=created&order=desc&rows=50"
         r = requests.get(url, headers=HEADERS, timeout=20)
         
         if r.status_code == 200:
             for item in r.json().get('message', {}).get('items', []):
                 if 'DOI' not in item: continue
                 
-                # --- 1. STRICT TYPE DETECTION (Preprint vs Journal) ---
+                # --- 1. STRICT TYPE DETECTION ---
                 raw_type = item.get('type', '')
                 subtype = item.get('subtype', '')
                 
@@ -105,15 +101,22 @@ def fetch_crossref_works(name, orcid):
                 else:
                     pub_type = "Journal Article"
 
-                # --- 2. ROBUST DATE LOGIC (For 'Last Week' Filter) ---
-                # Priority: Published Online -> Published Print -> Created (Minted)
-                date_obj = item.get('published-online') or item.get('published-print') or item.get('created')
+                # --- 2. AGGRESSIVE DATE LOGIC ---
+                # We check 'published-online' first, then 'created'.
+                # 'created' is the timestamp the DOI was minted. It is NEVER empty for valid DOIs.
+                date_obj = item.get('published-online') or item.get('created') or item.get('published-print')
                 
                 final_date = None
+                
+                # Case A: Standard Crossref Date Parts [2024, 1, 15]
                 if date_obj and 'date-parts' in date_obj:
                     final_date = standardize_date(date_obj['date-parts'])
                 
-                # Fallback: Use today's year if completely missing (rare)
+                # Case B: Timestamp string (often found in 'created')
+                elif date_obj and 'date-time' in date_obj:
+                    final_date = str(date_obj['date-time']).split('T')[0]
+
+                # Fallback
                 if not final_date:
                     final_date = datetime.now().strftime('%Y-%m-%d')
 
@@ -121,7 +124,7 @@ def fetch_crossref_works(name, orcid):
                 title = item.get('title', ['Untitled'])[0]
                 journal = item.get('container-title', [''])[0] if item.get('container-title') else "Preprint/Other"
                 
-                # Authors List
+                # Formatting Authors
                 auth_list = []
                 for a in item.get('author', []):
                     auth_list.append(f"{a.get('given','')} {a.get('family','')}")
@@ -134,11 +137,11 @@ def fetch_crossref_works(name, orcid):
                     'DOI': f"https://doi.org/{item['DOI']}",
                     'Paper Title': title,
                     'Journal Name': journal,
-                    'Journal Area': "Pending", # Will fill with OpenAlex later
+                    'Journal Area': "Pending", # OpenAlex will fill this later
                     'Year of Publication': final_date.split('-')[0],
                     'Citation Count': item.get('is-referenced-by-count', 0),
                     'Publication Type': pub_type,
-                    'DOI_Clean': item['DOI'].lower().strip() # For merging
+                    'DOI_Clean': item['DOI'].lower().strip()
                 })
     except Exception as e:
         print(f"[WARN] CrossRef failed for {name}: {e}")
@@ -146,16 +149,19 @@ def fetch_crossref_works(name, orcid):
     return works
 
 def enrich_topics(records):
-    """SECONDARY: Asks OpenAlex for Topics only."""
+    """
+    SECONDARY: Asks OpenAlex for Topics ONLY.
+    DOES NOT overwrite dates or titles.
+    """
     if not records: return []
-    
-    # Create a map of DOI -> Topic
-    doi_map = {}
     
     # Extract DOIs to query
     dois = [r['DOI_Clean'] for r in records]
     
-    # Helper to chunk requests (OpenAlex limits filter length)
+    # Map DOI -> Topic
+    doi_map = {}
+    
+    # Chunking requests (OpenAlex limits)
     def chunker(seq, size):
         return (seq[pos:pos + size] for pos in range(0, len(seq), size))
 
@@ -180,19 +186,19 @@ def enrich_topics(records):
         if r['DOI_Clean'] in doi_map:
             r['Journal Area'] = doi_map[r['DOI_Clean']]
         else:
-            r['Journal Area'] = "Multidisciplinary" # Default if OpenAlex doesn't know it yet
+            r['Journal Area'] = "Multidisciplinary" 
             
     return records
 
 def process_author(name):
-    # 1. Get ORCID
+    # 1. Get ORCID (Metadata Only)
     orcid = get_orcid(name)
     if not orcid: return []
     
-    # 2. Get Skeleton from CrossRef (Fast & Accurate Types)
+    # 2. Get Skeleton from CrossRef (Fast, Recent, Accurate Types)
     records = fetch_crossref_works(name, orcid)
     
-    # 3. Add Beef (Topics) from OpenAlex
+    # 3. Enrich with Topics (OpenAlex)
     enriched_records = enrich_topics(records)
     
     return enriched_records
@@ -204,7 +210,7 @@ if __name__ == "__main__":
     
     all_records = []
     if staff:
-        print(f"Scanning {len(staff)} authors (Crossref Dominant)...")
+        print(f"Scanning {len(staff)} authors (Crossref Priority Mode)...")
         with ThreadPoolExecutor(max_workers=8) as exc:
             futures = {exc.submit(process_author, n): n for n in staff}
             for f in as_completed(futures):
@@ -224,7 +230,7 @@ if __name__ == "__main__":
         # Cleanup
         df = df.drop(columns=['DOI_Clean'])
         
-        # Ensure all columns exist
+        # Ensure all columns exist for the App
         expected_cols = ['Date Available Online', 'LCDS Author', 'All Authors', 'DOI', 
                          'Paper Title', 'Journal Name', 'Journal Area', 
                          'Year of Publication', 'Citation Count', 'Publication Type']
