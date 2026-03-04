@@ -3,12 +3,12 @@ from bs4 import BeautifulSoup
 import pandas as pd
 import os
 import time
-from datetime import datetime, timedelta
+from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # --- CONFIGURATION ---
 mailto = os.environ.get('USER_EMAIL', 'research_team@example.com')
-HEADERS = {'User-Agent': f'LCDS-Pubs-Tracker/3.0 (mailto:{mailto})'}
+HEADERS = {'User-Agent': f'LCDS-Pubs-Tracker/4.0 (mailto:{mailto})'}
 
 def get_staff_list():
     """Scrapes staff names using h3.paragraph-side-title."""
@@ -27,6 +27,7 @@ def get_staff_list():
             if clean and len(clean.split()) >= 2: 
                 names.add(clean)
         
+        # Hardcoded Safety Net
         names.add("Ursula Gazeley")
         names.add("Melinda Mills")
         return sorted(list(names))
@@ -34,78 +35,35 @@ def get_staff_list():
         print(f"[WARN] Staff scrape failed: {e}")
         return ["Ursula Gazeley", "Melinda Mills"]
 
-def resolve_orcid(name):
-    """Finds ORCID for a name using OpenAlex."""
+def get_orcid(name):
+    """Resolves a Name to an ORCID using OpenAlex (Metadata lookup)."""
     try:
         r = requests.get("https://api.openalex.org/authors", params={'search': name}, headers=HEADERS)
         if r.status_code == 200:
-            res = r.json().get('results', [])
-            if res: return res[0]['orcid'].replace('https://orcid.org/', '')
-    except: pass
+            results = r.json().get('results', [])
+            if results:
+                return results[0]['orcid'].replace('https://orcid.org/', '')
+    except:
+        pass
     return None
 
-def fetch_openalex_data(name):
-    """Bulk historical fetch (Good for Topics, bad for recent dates)."""
-    works = {}
-    try:
-        r = requests.get("https://api.openalex.org/authors", params={'search': name}, headers=HEADERS)
-        if r.status_code != 200 or not r.json().get('results'): return {}
-        
-        author_id = r.json()['results'][0]['id']
-        # Fetch last 10 years to be safe
-        filter_str = f"author.id:{author_id},publication_year:>2019"
-        
-        rw = requests.get("https://api.openalex.org/works", params={'filter': filter_str, 'per-page': 200}, headers=HEADERS)
-        if rw.status_code == 200:
-            for item in rw.json().get('results', []):
-                doi = item.get('doi')
-                if not doi: continue
-                
-                # Standardize DOI
-                doi = doi.replace('https://doi.org/', '').lower().strip()
-                
-                topic = "Multidisciplinary"
-                if item.get('primary_topic'):
-                    topic = item['primary_topic'].get('field', {}).get('display_name', 'Multidisciplinary')
+def fetch_crossref_works(name, orcid):
+    """PRIMARY FETCH: Gets all works directly from CrossRef (Real-time)."""
+    works = []
+    if not orcid: return []
 
-                # Store by DOI for easy merging later
-                works[doi] = {
-                    'Date Available Online': item.get('publication_date'),
-                    'LCDS Author': name,
-                    'All Authors': ", ".join([a['author']['display_name'] for a in item.get('authorships', [])]),
-                    'DOI': f"https://doi.org/{doi}",
-                    'Paper Title': item.get('display_name'),
-                    'Journal Name': item.get('primary_location', {}).get('source', {}).get('display_name') or "Preprint/Other",
-                    'Journal Area': topic,
-                    'Year of Publication': item.get('publication_year'),
-                    'Citation Count': item.get('cited_by_count', 0),
-                    'Publication Type': "Preprint" if item.get('type') in ['preprint', 'posted-content'] else "Journal Article",
-                    'Source': 'OpenAlex'
-                }
-    except Exception as e:
-        print(f"[WARN] OpenAlex Error for {name}: {e}")
-    return works
-
-def fetch_recent_crossref(name, orcid):
-    """Recent fetch (Good for dates, bad for Topics)."""
-    works = {}
-    if not orcid: return {}
-    
     try:
+        # Fetch everything from 2019 onwards
         # Sort by 'published' desc to get the absolute newest items first
-        url = f"https://api.crossref.org/works?filter=orcid:{orcid},from-pub-date:{datetime.now().year-1}&sort=published&order=desc&rows=50"
-        r = requests.get(url, headers=HEADERS, timeout=15)
+        url = f"https://api.crossref.org/works?filter=orcid:{orcid},from-pub-date:2019-01-01&sort=published&order=desc&rows=100"
+        r = requests.get(url, headers=HEADERS, timeout=20)
         
         if r.status_code == 200:
             for item in r.json().get('message', {}).get('items', []):
                 if 'DOI' not in item: continue
-                doi = item['DOI'].lower().strip()
                 
-                # --- ROBUST DATE LOGIC ---
-                # 1. Try 'published-online' (usually most accurate for recent)
-                # 2. Try 'published-print'
-                # 3. Try 'issued'
-                # 4. Fallback: 'created' (When the DOI was registered - usually same day as online)
+                # 1. ROBUST DATE PARSING (The "Latest" Fix)
+                # Prioritize 'published-online' -> 'published-print' -> 'issued' -> 'created'
                 date_source = item.get('published-online') or item.get('published-print') or item.get('issued')
                 
                 final_date = None
@@ -118,91 +76,119 @@ def fetch_recent_crossref(name, orcid):
                     else:
                         final_date = f"{parts[0]}-01-01"
                 
-                # If date is vague (Jan 1st) or missing, use 'created' timestamp for accuracy
-                if not final_date or final_date.endswith('-01-01'):
+                # Fallback: Use 'created' timestamp (When DOI was minted)
+                if not final_date:
                     try:
                         created = item.get('created', {}).get('date-time', '')
-                        if created:
-                            final_date = created.split('T')[0] # Extract YYYY-MM-DD from ISO string
-                    except: pass
+                        final_date = created.split('T')[0]
+                    except: 
+                        final_date = datetime.now().strftime('%Y-%m-%d')
 
-                if not final_date:
-                    final_date = datetime.now().strftime('%Y-%m-%d') # Absolute fallback
-
-                # Type logic
+                # 2. Type Logic
                 subtype = item.get('subtype', '')
                 w_type = "Preprint" if subtype == 'preprint' or item.get('type') == 'posted-content' else "Journal Article"
                 
-                works[doi] = {
+                # 3. Build Skeleton Record
+                works.append({
+                    'DOI_Clean': item['DOI'].lower().strip(), # Helper for merging
+                    'DOI': f"https://doi.org/{item['DOI']}",
+                    'Paper Title': item.get('title', ['Untitled'])[0],
                     'Date Available Online': final_date,
-                    'LCDS Author': name,
-                    'All Authors': ", ".join([f"{a.get('given','')} {a.get('family','')}" for a in item.get('author', [])]),
-                    'DOI': f"https://doi.org/{doi}",
-                    'Paper Title': item.get('title', [''])[0],
-                    'Journal Name': item.get('container-title', [''])[0] if item.get('container-title') else "Preprint/Other",
-                    'Journal Area': "Pending (Recent)", 
                     'Year of Publication': final_date.split('-')[0],
+                    'Journal Name': item.get('container-title', [''])[0] if item.get('container-title') else "Preprint/Other",
                     'Citation Count': item.get('is-referenced-by-count', 0),
                     'Publication Type': w_type,
-                    'Source': 'Crossref'
-                }
+                    'LCDS Author': name,
+                    'Journal Area': "Pending (Recent)", # Placeholder
+                    'All Authors': ", ".join([f"{a.get('given','')} {a.get('family','')}" for a in item.get('author', [])])
+                })
     except Exception as e:
-        print(f"[WARN] Crossref Error for {name}: {e}")
+        print(f"[WARN] CrossRef failed for {name}: {e}")
+        
     return works
 
-def process_author(name):
-    # 1. Get OpenAlex Data (The Baseline)
-    oa_data = fetch_openalex_data(name)
+def enrich_with_openalex(records):
+    """SECONDARY FETCH: Adds 'Beef' (Topics) to the CrossRef Skeleton."""
+    if not records: return []
     
-    # 2. Get Crossref Data (The Updates)
-    orcid = resolve_orcid(name)
-    cr_data = fetch_recent_crossref(name, orcid)
+    # Extract DOIs to query in bulk
+    dois = [r['DOI_Clean'] for r in records]
     
-    # 3. SMART MERGE
-    # We start with OpenAlex. If Crossref has the same DOI, we OVERWRITE the Date and Title 
-    # (because Crossref is newer), but we KEEP the 'Journal Area' from OpenAlex.
-    merged = oa_data.copy()
-    
-    for doi, cr_item in cr_data.items():
-        if doi in merged:
-            # ENTRY EXISTS: Update it with fresh Crossref data
-            merged[doi]['Date Available Online'] = cr_item['Date Available Online']
-            merged[doi]['Paper Title'] = cr_item['Paper Title']
-            merged[doi]['Publication Type'] = cr_item['Publication Type']
-            # We do NOT overwrite 'Journal Area' so we keep the rich topic info
-        else:
-            # NEW ENTRY: Add it
-            merged[doi] = cr_item
-            
-    return list(merged.values())
+    # OpenAlex allows filtering by DOI pipe-separated (limited to ~50 per call, so we chunk)
+    def chunker(seq, size):
+        return (seq[pos:pos + size] for pos in range(0, len(seq), size))
 
-# --- MAIN ---
+    doi_map = {} # Map DOI -> Topic
+    
+    for chunk in chunker(dois, 50):
+        doi_filter = "|".join([f"doi:https://doi.org/{d}" for d in chunk])
+        try:
+            url = f"https://api.openalex.org/works?filter={doi_filter}&per-page=50"
+            r = requests.get(url, headers=HEADERS)
+            if r.status_code == 200:
+                for item in r.json().get('results', []):
+                    d_key = item.get('doi', '').replace('https://doi.org/', '').lower().strip()
+                    
+                    # Extract Topic
+                    topic = "Multidisciplinary"
+                    if item.get('primary_topic'):
+                        topic = item['primary_topic'].get('field', {}).get('display_name', 'Multidisciplinary')
+                    
+                    doi_map[d_key] = topic
+        except:
+            pass
+
+    # Merge Topic back into records
+    for r in records:
+        if r['DOI_Clean'] in doi_map:
+            r['Journal Area'] = doi_map[r['DOI_Clean']]
+            
+    return records
+
+def process_author(name):
+    # 1. Get ORCID
+    orcid = get_orcid(name)
+    if not orcid: return []
+    
+    # 2. Get Skeleton from CrossRef (Fast & Fresh)
+    skeleton = fetch_crossref_works(name, orcid)
+    
+    # 3. Add Beef from OpenAlex (Rich Metadata)
+    full_cow = enrich_with_openalex(skeleton)
+    
+    return full_cow
+
+# --- MAIN EXECUTION ---
 if __name__ == "__main__":
     os.makedirs("data", exist_ok=True)
     staff = get_staff_list()
     
     all_records = []
     if staff:
-        print(f"Scanning {len(staff)} authors with Smart Merge...")
+        print(f"Scanning {len(staff)} authors (CrossRef First Strategy)...")
         with ThreadPoolExecutor(max_workers=5) as exc:
             futures = {exc.submit(process_author, n): n for n in staff}
             for f in as_completed(futures):
                 try:
-                    all_records.extend(f.result())
+                    res = f.result()
+                    if res: all_records.extend(res)
                 except Exception as e:
                     print(f"[CRITICAL] Thread failed: {e}")
     
-    # Create CSV
+    # Save CSV
     if all_records:
         df = pd.DataFrame(all_records)
-        # Final Sort by Date
-        df = df.sort_values(by='Date Available Online', ascending=False)
         
-        # Ensure strict column order
+        # Deduplicate (If multiple authors are on the same paper, keep one)
+        df = df.sort_values(by='Date Available Online', ascending=False)
+        df = df.drop_duplicates(subset=['DOI_Clean'], keep='first')
+        
+        # Cleanup
+        df = df.drop(columns=['DOI_Clean'])
+        
+        # Verify Columns
         cols = ['Date Available Online', 'LCDS Author', 'All Authors', 'DOI', 'Paper Title', 
                 'Journal Name', 'Journal Area', 'Year of Publication', 'Citation Count', 'Publication Type']
-        
-        # Fill missing cols if any
         for c in cols:
             if c not in df.columns: df[c] = ""
             
@@ -210,6 +196,5 @@ if __name__ == "__main__":
         df.to_csv("data/lcds_publications.csv", index=False)
         print(f"SUCCESS: Saved {len(df)} records.")
     else:
-        print("WARNING: No records found.")
-        # Create empty
+        print("WARNING: No records found. Creating empty CSV.")
         pd.DataFrame(columns=['Date Available Online']).to_csv("data/lcds_publications.csv", index=False)
