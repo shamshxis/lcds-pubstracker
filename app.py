@@ -1,77 +1,160 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-from datetime import datetime
-import time
+from datetime import datetime, timedelta
 
 # --- PAGE CONFIG ---
-st.set_page_config(page_title="LCDS Impact Tracker", layout="wide")
+st.set_page_config(page_title="LCDS Impact Tracker", page_icon="🎓", layout="wide")
 
-# --- CSS (Clean White Text for Dark Mode) ---
+# --- CUSTOM CSS (Branding + Dark Mode) ---
 st.markdown("""
     <style>
-        h1, h2, h3 { color: white !important; font-family: 'Helvetica Neue', sans-serif; }
-        .trendy-sub { color: white; font-size: 1.4rem; font-weight: 600; margin-bottom: 20px; }
-        .footer { position: fixed; left: 0; bottom: 0; width: 100%; background-color: #0E1117; color: #777; text-align: center; padding: 10px; font-size: 0.8rem; border-top: 1px solid #333; z-index: 999; }
-        .footer a { color: #FFD700; text-decoration: none; }
-        .block-container { padding-bottom: 80px; }
+        @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap');
+        
+        /* Header Gradient */
+        .trendy-sub {
+            background: linear-gradient(90deg, #002147 0%, #C49102 100%);
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+            font-size: 1.5rem; font-weight: 600; margin-bottom: 20px;
+        }
+        @media (prefers-color-scheme: dark) {
+            .trendy-sub { background: linear-gradient(90deg, #81D4FA 0%, #FFD700 100%); }
+        }
+        
+        /* Footer */
+        .footer {
+            position: fixed; left: 0; bottom: 0; width: 100%;
+            background-color: #002147; color: white; text-align: center;
+            padding: 10px; font-size: 0.8rem; z-index: 1000;
+        }
+        .footer a { color: #FFD700; text-decoration: none; font-weight: bold; }
+        
+        /* Table Styling */
+        .table-container { max-height: 500px; overflow-y: auto; border: 1px solid #ddd; border-radius: 8px; }
+        .styled-table { width: 100%; border-collapse: collapse; font-family: 'Roboto', sans-serif; font-size: 0.9rem; }
+        .styled-table th { position: sticky; top: 0; background-color: #002147; color: white; padding: 10px; z-index: 1; }
+        .styled-table td { padding: 8px; border-bottom: 1px solid #eee; }
+        
+        @media (prefers-color-scheme: dark) {
+            .styled-table th { background-color: #1E1E1E; color: #FFD700; }
+            .styled-table td { border-bottom: 1px solid #333; color: #ddd; }
+        }
+        .block-container { padding-bottom: 60px; }
     </style>
 """, unsafe_allow_html=True)
 
+# --- LOAD DATA ---
+@st.cache_data(ttl=3600)
 def load_data():
-    timestamp = int(time.time())
-    url = f"https://raw.githubusercontent.com/shamshxis/lcds-pubstracker/data/data/lcds_publications.csv?v={timestamp}"
+    url = "https://raw.githubusercontent.com/shamshxis/lcds-pubstracker/data/data/lcds_publications.csv"
     try:
         df = pd.read_csv(url)
         df['Date Available Online'] = pd.to_datetime(df['Date Available Online'], errors='coerce')
         df['Citation Count'] = pd.to_numeric(df['Citation Count'], errors='coerce').fillna(0)
+        df['Year'] = pd.to_numeric(df['Year'], errors='coerce').fillna(datetime.now().year)
+        
+        # Defensive: Ensure columns exist
+        if 'Publication Type' not in df.columns: df['Publication Type'] = 'Journal Article'
+        if 'Journal Area' not in df.columns: df['Journal Area'] = 'Multidisciplinary'
+        
         return df
     except: return pd.DataFrame()
 
 df = load_data()
 
-# --- HEADER ---
-st.title("Leverhulme Centre for Demographic Science")
-st.markdown('<div class="trendy-sub">Measuring our impact over the years.</div>', unsafe_allow_html=True)
-
+# --- SIDEBAR FILTERS ---
+st.sidebar.title("🔍 Filters")
 if df.empty:
-    st.info("📊 The data file is being refreshed. Please click 'Force Refresh' in the sidebar in a moment.")
-    if st.sidebar.button("🔄 Force Refresh"): st.rerun()
+    st.warning("⚠️ Data loading... check back shortly.")
     st.stop()
 
-# --- METRIC CARDS ---
+# Time Filter
+time_filter = st.sidebar.radio("Period", ["All Time", "Last 5 Years", "Last Year", "Last Month", "Last Week"], index=1)
+now = datetime.now()
+
+if time_filter == "Last Week": start = now - timedelta(days=7)
+elif time_filter == "Last Month": start = now - timedelta(days=30)
+elif time_filter == "Last Year": start = now - timedelta(days=365)
+elif time_filter == "Last 5 Years": start = now - timedelta(days=5*365)
+else: start = pd.to_datetime("2000-01-01")
+
+df_filtered = df[df['Date Available Online'] >= start].copy()
+
+# Download Button
+st.sidebar.markdown("---")
+csv = df_filtered.to_csv(index=False).encode('utf-8')
+st.sidebar.download_button("📥 Download CSV", csv, "lcds_data.csv", "text/csv")
+
+# --- MAIN DASHBOARD ---
+st.title("Leverhulme Centre for Demographic Science")
+st.markdown('<div class="trendy-sub">Measuring our impact across the years.</div>', unsafe_allow_html=True)
+
+# Metrics
 c1, c2, c3, c4 = st.columns(4)
-c1.metric("Verified Output", len(df))
-c2.metric("Total Citations", int(df['Citation Count'].sum()) if 'Citation Count' in df.columns else 0)
-c3.metric("Preprints Found", len(df[df['Publication Type'] == 'Preprint']) if 'Publication Type' in df.columns else 0)
-c4.metric("Verified Authors", df['LCDS Author'].nunique() if 'LCDS Author' in df.columns else 0)
+c1.metric("Publications", len(df_filtered))
+c2.metric("Total Citations", int(df_filtered['Citation Count'].sum()))
+c3.metric("Preprints", len(df_filtered[df_filtered['Publication Type'] == 'Preprint']))
+c4.metric("Active Researchers", df_filtered['LCDS Author'].nunique())
 
 st.divider()
 
-# --- CUMULATIVE IMPACT CHART ---
-if 'Year' in df.columns:
-    st.subheader("📈 Accumulated Citation Impact")
-    df_chart = df[pd.to_numeric(df['Year'], errors='coerce').notnull()].copy()
-    df_chart['Year'] = df_chart['Year'].astype(int)
-    df_plot = df_chart.groupby('Year')['Citation Count'].sum().reset_index().sort_values('Year')
-    df_plot['Cumulative'] = df_plot['Citation Count'].cumsum()
-    fig = px.area(df_plot, x='Year', y='Cumulative', markers=True, color_discrete_sequence=['#81D4FA'])
-    fig.update_layout(xaxis_type='category', paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font_color="white")
-    st.plotly_chart(fig, use_container_width=True)
+# --- PLOTS ROW 1 ---
+col1, col2 = st.columns(2)
+with col1:
+    st.subheader("📈 Citations Over Time")
+    # Group by Year
+    df_yearly = df_filtered.groupby('Year')['Citation Count'].sum().reset_index()
+    if not df_yearly.empty:
+        fig = px.bar(df_yearly, x='Year', y='Citation Count', title="Total Citations per Year",
+                     color_discrete_sequence=['#002147'])
+        st.plotly_chart(fig, use_container_width=True)
+    else: st.info("No citation data for this period.")
 
-# --- PUBLICATIONS TABLE ---
-st.subheader("📄 Recent Publications")
-if 'Year' in df.columns:
-    df = df.sort_values(by=['Year', 'Date Available Online'], ascending=[False, False])
+with col2:
+    st.subheader("📊 Impact by Field")
+    df_area = df_filtered.groupby('Journal Area')['Citation Count'].sum().reset_index()
+    df_area = df_area[df_area['Journal Area'] != 'Multidisciplinary']
+    if not df_area.empty:
+        fig = px.pie(df_area, values='Citation Count', names='Journal Area', hole=0.4,
+                     color_discrete_sequence=px.colors.qualitative.Prism)
+        st.plotly_chart(fig, use_container_width=True)
+    else: st.info("No field data available.")
 
-st.sidebar.download_button("📥 Download Verified CSV", df.to_csv(index=False).encode('utf-8'), "lcds_verified_impact.csv", "text/csv")
+# --- PLOTS ROW 2 ---
+col3, col4 = st.columns(2)
+with col3:
+    st.subheader("📑 Distribution Histogram")
+    # Histogram of Citation Counts
+    if not df_filtered.empty:
+        fig_hist = px.histogram(df_filtered, x="Citation Count", nbins=20, 
+                                title="Citation Distribution",
+                                color_discrete_sequence=['#C49102'])
+        st.plotly_chart(fig_hist, use_container_width=True)
+    else: st.info("No data.")
 
-cols = ['Year', 'Date Available Online', 'LCDS Author', 'Paper Title', 'Journal Name', 'Citation Count', 'DOI']
-df_disp = df[[c for c in cols if c in df.columns]].copy()
-if 'Date Available Online' in df_disp.columns:
-    df_disp['Date'] = df_disp['Date Available Online'].dt.strftime('%Y-%m-%d')
-    df_disp = df_disp.drop(columns=['Date Available Online'])
+with col4:
+    st.subheader("📄 Publication Types")
+    df_type = df_filtered['Publication Type'].value_counts().reset_index()
+    df_type.columns = ['Type', 'Count']
+    if not df_type.empty:
+        fig_type = px.pie(df_type, values='Count', names='Type', hole=0.4,
+                          color_discrete_sequence=px.colors.qualitative.Safe)
+        st.plotly_chart(fig_type, use_container_width=True)
+    else: st.info("No type data.")
 
-st.dataframe(df_disp, use_container_width=True, hide_index=True, column_config={"DOI": st.column_config.LinkColumn("Link", display_text="View Paper")})
+# --- TABLE ---
+st.subheader("📄 Recent Publications List")
+df_disp = df_filtered[['Date Available Online', 'LCDS Author', 'Paper Title', 'Journal Name', 'Citation Count', 'DOI']].copy()
+df_disp['DOI'] = df_disp['DOI'].apply(lambda x: f'<a href="{x}" target="_blank">View</a>' if str(x).startswith('http') else x)
+df_disp['Date Available Online'] = df_disp['Date Available Online'].dt.strftime('%Y-%m-%d')
 
-st.markdown(f'<div class="footer">© University of Oxford {datetime.now().year} | <a href="https://www.demography.ox.ac.uk" target="_blank">Visit Website</a></div>', unsafe_allow_html=True)
+html = df_disp.to_html(escape=False, index=False, classes="styled-table")
+st.markdown(f'<div class="table-container">{html}</div>', unsafe_allow_html=True)
+
+# --- FOOTER ---
+st.markdown("""
+    <div class="footer">
+        © Certified University of Oxford 2026 - All Rights Reserved. | 
+        <a href="https://www.demography.ox.ac.uk" target="_blank">demography.ox.ac.uk</a>
+    </div>
+""", unsafe_allow_html=True)
