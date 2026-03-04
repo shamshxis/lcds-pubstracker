@@ -8,13 +8,11 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # --- CONFIGURATION ---
 mailto = os.environ.get('USER_EMAIL', 'research_team@example.com')
-HEADERS = {'User-Agent': f'LCDS-Impact-Tracker/3.0 (mailto:{mailto})'}
+HEADERS = {'User-Agent': f'LCDS-Tracker/Final (mailto:{mailto})'}
 
-# --- 1. STAFF DISCOVERY (Prioritizing YOUR Tag) ---
+# --- 1. STAFF DISCOVERY ---
 def get_staff_list():
-    """
-    Scrapes LCDS website using the specific h3 tag that works.
-    """
+    """Scrapes LCDS website using your proven selectors + 'Kitchen Sink' backup."""
     print(f"[{datetime.now().time()}] 🔍 Scanning LCDS website...")
     url = "https://www.demography.ox.ac.uk/people"
     names = set()
@@ -23,59 +21,98 @@ def get_staff_list():
         res = requests.get(url, headers=HEADERS, timeout=30)
         soup = BeautifulSoup(res.text, 'html.parser')
         
-        # --- PRIORITY 1: The Tag You Identified ---
-        # This is the exact class used for names in the grid layout
-        for el in soup.select('h3.paragraph-side-title'):
-            raw_name = el.get_text(strip=True)
-            if raw_name:
-                names.add(raw_name)
-
-        # --- PRIORITY 2: Backup Selectors (Just in case) ---
-        # Some profiles might be in a different list view
-        other_selectors = ['.views-field-title a', '.person-name', 'h3.node__title']
-        for s in other_selectors:
+        # Proven Selectors (from your Colab)
+        selectors = [
+            'h3.paragraph-side-title', 
+            'div.person-name', 
+            'span.field-content h3', 
+            '.views-field-title a'
+        ]
+        
+        for s in selectors:
             for el in soup.select(s):
                 names.add(el.get_text(strip=True))
 
-        # --- CLEANING ---
+        # Backup: Find people hidden in links
+        for a in soup.find_all('a', href=True):
+            if '/people/' in a['href']:
+                names.add(a.get_text(strip=True))
+
+        # Cleaning
         clean_names = set()
         for raw in names:
-            # Standardize
             clean = raw.replace('Dr ', '').replace('Prof ', '').replace('Professor ', '').strip()
+            junk = ["View profile", "Read more", "Contact", "Email", "Research", "Team", "Profile"]
+            if any(x.lower() in clean.lower() for x in junk): continue
             
-            # Remove Junk that sometimes sneaks into h3 tags
-            junk_terms = ["View profile", "Read more", "Contact", "Email", "Research", "Team", "Profile"]
-            if any(x.lower() in clean.lower() for x in junk_terms): continue
-            
-            # Validate (Must look like a name: "First Last")
-            parts = clean.split()
-            if len(parts) >= 2 and len(clean) < 40 and not any(char.isdigit() for char in clean):
+            # Must look like a name
+            if len(clean.split()) >= 2 and len(clean) < 40 and not any(char.isdigit() for char in clean):
                 clean_names.add(clean)
 
-        # SAFETY NET: Key Leads
+        # Hardcoded Leads (Ensure they are never missed)
         clean_names.add("Melinda Mills")
         clean_names.add("Jennifer Dowd")
+        clean_names.add("Thomas Rawson") 
         
         final_list = sorted(list(clean_names))
-        print(f"✅ Found {len(final_list)} researchers.")
+        print(f"✅ Found {len(final_list)} potential staff on website.")
         return final_list
 
     except Exception as e:
-        print(f"❌ Staff scrape error: {e}")
-        return ["Melinda Mills", "Jennifer Dowd"]
+        print(f"❌ Scrape error: {e}")
+        return ["Melinda Mills", "Thomas Rawson"]
 
-# --- 2. ORCID (Unchanged) ---
+# --- 2. ORCID WITH "ADMIN FIREWALL" ---
 def get_orcid(name):
+    """
+    STRICT FILTER:
+    - Must be Oxford Affiliated.
+    - Must match Research Keywords (Demography, Sociology, Zoology, etc).
+    - Must NOT match Admin/Engineering keywords.
+    """
     try:
-        # Search OpenAlex for name
         r = requests.get("https://api.openalex.org/authors", params={'search': name}, headers=HEADERS, timeout=10)
         if r.status_code == 200:
             results = r.json().get('results', [])
-            if results: return results[0]['orcid'].replace('https://orcid.org/', '')
+            
+            for person in results:
+                # Build full affiliation text (current + past + last known)
+                affils = [a.get('institution', {}).get('display_name', '').lower() for a in person.get('affiliations', [])]
+                last_known = person.get('last_known_institution', {}).get('display_name', '').lower()
+                affils.append(last_known)
+                full_text = " ".join(affils)
+                
+                # --- RULE 1: THE OXFORD CONNECTION ---
+                if "oxford" not in full_text: 
+                    continue # Skip if never been at Oxford
+                
+                # --- RULE 2: THE TOPIC WHITELIST ---
+                # Added 'zoology' for Thomas Rawson, 'economics' for others
+                valid_keywords = [
+                    "demographic", "sociology", "nuffield", "leverhulme", 
+                    "population", "social policy", "zoology", "economics", 
+                    "public health", "epidemiology"
+                ]
+                if not any(k in full_text for k in valid_keywords):
+                    continue # Skip if field is irrelevant
+                
+                # --- RULE 3: THE ADMIN/ENGINEER BANLIST ---
+                # Filters out Louise Allcock (Admin) and Wen Su (Engineer)
+                ban_keywords = [
+                    "administrator", "coordinator", "manager", "finance", 
+                    "civil engineering", "materials science", "structural engineering"
+                ]
+                if any(b in full_text for b in ban_keywords):
+                    continue # Skip admins and engineers
+                
+                # If we pass all 3 rules, it's a match!
+                return person['orcid'].replace('https://orcid.org/', '')
     except: pass
+    
+    print(f"   ❌ Skipping {name} (No valid Researcher ORCID found)")
     return None
 
-# --- 3. FETCH (Your Proven Logic) ---
+# --- 3. FETCH WORKS (Unchanged) ---
 def standardize_date(date_parts):
     try:
         if not date_parts: return None
@@ -87,9 +124,11 @@ def standardize_date(date_parts):
 
 def fetch_works(name, orcid):
     works = []
-    if not orcid: return []
+    # CRITICAL: If get_orcid returned None, we STOP here.
+    if not orcid: return [] 
+    
     try:
-        # Crossref First + Created Date Priority + 2019 Start
+        # Crossref First + Created Date Priority
         url = f"https://api.crossref.org/works?filter=orcid:{orcid},from-pub-date:2019-09-01&sort=created&order=desc&rows=100"
         r = requests.get(url, headers=HEADERS, timeout=30)
         if r.status_code == 200:
@@ -97,7 +136,6 @@ def fetch_works(name, orcid):
             for item in items:
                 is_pp = item.get('subtype') == 'preprint' or item.get('type') == 'posted-content'
                 
-                # The Critical "Created Date" Logic
                 d_obj = item.get('published-online') or item.get('created') or item.get('published-print')
                 final_date = datetime.now().strftime('%Y-%m-%d')
                 if d_obj and 'date-parts' in d_obj:
@@ -120,7 +158,7 @@ def fetch_works(name, orcid):
     except: pass
     return works
 
-# --- 4. ENRICH (Safe Mode) ---
+# --- 4. ENRICH (Unchanged) ---
 def safe_enrich(df):
     if df.empty: return df
     print(f"[{datetime.now().time()}] 🧠 Enriching data...")
@@ -155,9 +193,7 @@ def safe_enrich(df):
             if d_key in doi_map:
                 df.at[index, 'Field'] = doi_map[d_key]['Field']
                 df.at[index, 'Countries'] = doi_map[d_key]['Countries']
-                
-    except Exception as e:
-        print(f"Enrichment warning: {e}")
+    except: pass
     return df
 
 # --- MAIN ---
@@ -166,7 +202,7 @@ if __name__ == "__main__":
     staff = get_staff_list()
     
     all_data = []
-    # 5 workers is safe for rate limits
+    # 5 workers is safe
     with ThreadPoolExecutor(max_workers=5) as exc:
         futures = {exc.submit(fetch_works, n, get_orcid(n)): n for n in staff}
         for f in as_completed(futures):
@@ -176,11 +212,7 @@ if __name__ == "__main__":
     if all_data:
         df = pd.DataFrame(all_data)
         df = df.sort_values('Date', ascending=False).drop_duplicates('DOI')
-        
-        # Save RAW data first
         df.to_csv("data/lcds_publications.csv", index=False)
-        
-        # Enrich and Save Again
         df = safe_enrich(df)
         df.to_csv("data/lcds_publications.csv", index=False)
         print(f"✅ SUCCESS: Saved {len(df)} records.")
