@@ -1,7 +1,5 @@
 Date Available Online,LCDS Author,Paper Title,Journal Name,Publication Type,Citation Count,Country,DOI,Year
 2024-06-14,Melinda Mills,13. Genetics and Reproductive Behaviour,Human Evolutionary Demography,Journal Article,0,Global,https://doi.org/10.11647/obp.0251.13,2024
-2025-07-04,Ginevra Floridi,170 years of change in living arrangements in the United States using expected years of life: A research note,Preprint,Preprint,0,Global,https://doi.org/10.31235/osf.io/wbc45_v2,2025
-2024-07-10,Ginevra Floridi,170 years of living arrangements in the United States,Preprint,Preprint,0,Global,https://doi.org/10.31235/osf.io/wbc45,2024
 2026-01-26,Melinda Mills,"58 risk and 34 protective effects of
                   <i>GLP1R</i>
                   on disease phenome and adverse neonatal health",Preprint,Preprint,0,Global,https://doi.org/10.64898/2026.01.24.26344404,2026
@@ -35,6 +33,7 @@ Date Available Online,LCDS Author,Paper Title,Journal Name,Publication Type,Cita
 2024-11-29,Liliana Andriano,Agricultural droughts and under-five mortality in Côte d’Ivoire: Differential impacts across social and demographic groups,Population and Environment,Journal Article,1,Global,https://doi.org/10.1007/s11111-024-00469-0,2024
 2022-01-06,Thomas Rawson,A hierarchical Bayesian quantitative microbiological risk assessment model for Salmonella in the sheep meat food chain,Food Microbiology,Journal Article,6,Global,https://doi.org/10.1016/j.fm.2021.103975,2022
 2023-07-28,Daniel Valdenegro,A Large Language Models Digest For Social Scientists,Preprint,Preprint,2,Global,https://doi.org/10.31235/osf.io/m74vs,2023
+2019-12-10,Bent Nielsen,A Likelihood Approach to Bornhuetter–Ferguson Analysis,Risks,Journal Article,3,Global,https://doi.org/10.3390/risks7040119,2019
 2022-09-15,Michael Chong,ALSUntangled #67: rituximab,Amyotrophic Lateral Sclerosis and Frontotemporal Degeneration,Journal Article,4,Global,https://doi.org/10.1080/21678421.2022.2122845,2022
 2022-11-18,Michael Chong,ALSUntangled #68: ozone therapy,Amyotrophic Lateral Sclerosis and Frontotemporal Degeneration,Journal Article,0,Global,https://doi.org/10.1080/21678421.2022.2145904,2022
 2023-01-25,Michael Chong,ALSUntangled # 69: astaxanthin,Amyotrophic Lateral Sclerosis and Frontotemporal Degeneration,Journal Article,0,Global,https://doi.org/10.1080/21678421.2023.2171302,2023
@@ -46,6 +45,7 @@ Date Available Online,LCDS Author,Paper Title,Journal Name,Publication Type,Cita
 2025-05-08,Thomas Rawson,A mathematical model of H5N1 influenza transmission in US dairy cattle,Nature Communications,Journal Article,3,Global,https://doi.org/10.1038/s41467-025-59554-z,2025
 2025-10-23,"Jasmin Abdel Ghany, Joshua Wilde, Ursula Gazeley",Ambient air pollution and the sex ratio at birth: a systematic review and narrative synthesis,Preprint,Preprint,0,Global,https://doi.org/10.1101/2025.10.21.25338487,2025
 2019-09-02,Simon Myers,A method for genome-wide genealogy estimation for thousands of samples,Nature Genetics,Journal Article,530,Global,https://doi.org/10.1038/s41588-019-0484-x,2019
+2020-03-06,Per Block,A model for the dynamics of face-to-face interactions in social groups,Network Science,Journal Article,19,Global,https://doi.org/10.1017/nws.2020.3,2020
 2023-08-29,Vincent Straub,A multidomain relational framework to guide institutional AI research and adoption,"Proceedings of the 2023 AAAI/ACM Conference on AI, Ethics, and Society",Journal Article,5,Global,https://doi.org/10.1145/3600211.3604718,2023
 2022-06-21,Cecilia Lindgren,A multi-ethnic polygenic risk score is associated with hypertension prevalence and progression throughout adulthood,Nature Communications,Journal Article,65,Global,https://doi.org/10.1038/s41467-022-31080-2,2022
 2025-05-24,Joseph Millard,A Multithreat Meta‐Analytic Database for Understanding Insect Biodiversity Change,Diversity and Distributions,Journal Article,3,Global,https://doi.org/10.1111/ddi.70025,2025
@@ -77,6 +77,7 @@ Date Available Online,LCDS Author,Paper Title,Journal Name,Publication Type,Cita
 2024-11-05,Daniel Zazueta-Borboa,Assessing the Accuracy of ARIMA and Hamilton-Perry Models to Forecast Population at the Intra-urban Level in Greater Mexico City,Preprint,Preprint,0,Global,https://doi.org/10.31235/osf.io/ngkzr,2024
 2021-10-01,Ilya Kashnitsky,"Assessing the Burden of COVID-19 in Developing Countries: Systematic Review, Meta-Analysis, and Public Policy Implications",Preprint,Preprint,13,Global,https://doi.org/10.1101/2021.09.29.21264325,2021
 2023-06-21,Rob Salguero-Gómez,A standard protocol to report discrete stage‐structured demographic information,Methods in Ecology and Evolution,Journal Article,12,Global,https://doi.org/10.1111/2041-210x.14164,2023
+2021-08-25,Per Block,A statistical model for the analysis of mobility tables as weighted networks with an application to faculty hiring networks,Social Networks,Journal Article,7,Global,https://doi.org/10.1016/j.socnet.2021.08.003,2021
 2023-01-30,"Bastian Betthäuser, Per Engzell",A systematic review and meta-analysis of the evidence on learning during the COVID-19 pandemic,Nature Human Behaviour,Journal Article,356,Global,https://doi.org/10.1038/s41562-022-01506-4,2023
 2022-04-20,Bastian Betthäuser,A systematic review and meta-analysis of the impact of the COVID-19 pandemic on learning,Preprint,Preprint,20,Global,https://doi.org/10.31235/osf.io/g2wuy,2022
 2025-07-12,Thomas Rawson,"A systematic review of Zika virus disease: epidemiological parameters, mathematical models, and outbreaks",Preprint,Preprint,0,Global,https://doi.org/10.1101/2025.07.10.25331254,2025
@@ -116,18 +117,18 @@ Date Available Online,LCDS Author,Paper Title,Journal Name,Publication Type,Cita
                   <i>Campylobacter</i>
                   ?",Preprint,Preprint,0,Global,https://doi.org/10.1101/2021.03.30.437710,2021
 2024-08-06,"Hampton Gaddy, Maria Gargiulo",Can we estimate crisis death tolls by subtracting population estimates? A critical review and appraisal,Preprint,Preprint,0,Global,https://doi.org/10.31235/osf.io/nrpb3,2024
-2022-04-24,Ginevra Floridi,Capacity or Necessity? Comparing the Socio-Economic Distribution of Productive Activities Between Italy and South Korea,Research on Aging,Journal Article,1,Global,https://doi.org/10.1177/01640275221089203,2022
 2019-08-06,Cecilia Lindgren,Carbohydrate quality and health: distilling simple truths from complexity,The American Journal of Clinical Nutrition,Journal Article,15,Global,https://doi.org/10.1093/ajcn/nqz215,2019
 2020-12-07,Cecilia Lindgren,Cardiometabolic Risk Factors and Preclinical Target Organ Damage Among Adults in Ghana: Findings From a National Study,Journal of the American Heart Association,Journal Article,23,Global,https://doi.org/10.1161/jaha.120.017492,2020
 2023-05-02,Charles Rahal,Cash for COVID-19 Vaccines in Africa: A Financial Incentives Trial in Rural Ghana,Preprint,Preprint,0,Global,https://doi.org/10.21203/rs.3.rs-2845647/v1,2023
 2021-07-28,Charles Rahal,Cash versus Lotteries: COVID-19 Vaccine Incentives Experiment*,Preprint,Preprint,7,Global,https://doi.org/10.1101/2021.07.26.21250865,2021
 2023-06-16,Charles Rahal,Cash versus lottery video messages: online COVID-19 vaccine incentives experiment,Oxford Open Economics,Journal Article,1,Global,https://doi.org/10.1093/ooec/odad004,2023
 2020-05-19,Aashish Gupta,"Caste, Religion, and Mental Health in India",Population Research and Policy Review,Journal Article,30,Global,https://doi.org/10.1007/s11113-020-09585-9,2020
+2022-03-25,Bent Nielsen,Causal Transmission in Reduced-Form Models,Econometrics,Journal Article,2,Global,https://doi.org/10.3390/econometrics10020014,2022
 2024-03-06,"Andrea Tilstra, Jennifer Beam Dowd, Ridhi Kashyap",Cause-Specific Excess Mortality in the US During the COVID-19 Pandemic,Preprint,Preprint,2,Global,https://doi.org/10.1101/2024.03.05.24303783,2024
 2025-12-31,Cecilia Lindgren,cellSTAAR: incorporating single-cell-sequencing-based functional data to boost power in rare variant association testing of noncoding regions,Nature Methods,Journal Article,1,Global,https://doi.org/10.1038/s41592-025-02919-5,2025
 2021-02-04,Michael Chong,Challenges and opportunities for Multi-National Investigator-Initiated clinical trials for ALS: European and United States collaborations,Amyotrophic Lateral Sclerosis and Frontotemporal Degeneration,Journal Article,5,Global,https://doi.org/10.1080/21678421.2021.1879866,2021
 2023-09-29,Bastian Betthäuser,Change and inequality in German teenagers’ typical time-use sequences between 1991 and 2013,Preprint,Preprint,0,Global,https://doi.org/10.31235/osf.io/25dkj,2023
-2023-07-22,"Ginevra Floridi, José Manuel Aburto, Maria Gargiulo",Changes in fertility in the wake of the homicide surge in Mexico,Preprint,Preprint,2,Global,https://doi.org/10.31235/osf.io/mf9eb,2023
+2023-07-22,"José Manuel Aburto, Maria Gargiulo",Changes in fertility in the wake of the homicide surge in Mexico,Preprint,Preprint,2,Global,https://doi.org/10.31235/osf.io/mf9eb,2023
 2021-05-20,Ewa Batyra,Changing Gender Gaps in the Timing of First Union Formation and Sexual Initiation in Sub‐Saharan Africa,Population and Development Review,Journal Article,8,Global,https://doi.org/10.1111/padr.12405,2021
 2024-04-10,Antonino Polizzi,Changing Kinship Structures in East and West Germany Before and After Reunification,Preprint,Preprint,0,Global,https://doi.org/10.31235/osf.io/6bf7k,2024
 2020-09-16,Ilya Kashnitsky,Changing regional inequalities in ageing across Europe,Preprint,Preprint,0,Global,https://doi.org/10.31219/osf.io/6m4kg,2020
@@ -137,6 +138,7 @@ Date Available Online,LCDS Author,Paper Title,Journal Name,Publication Type,Cita
 2025-09-20,Evelina Akimova,Children’s genetics and family dynamics: An evocative effects analysis of the Norwegian Mother-Father-and-Child Study,Preprint,Preprint,0,Global,https://doi.org/10.31235/osf.io/65kdw_v1,2025
 2025-06-20,Jennifer Beam Dowd,Chronic health conditions and health-related economic inactivity in midlife: Evidence from the 1958 and 1970 British birth cohorts,Preprint,Preprint,0,Global,https://doi.org/10.1101/2025.06.20.25329982,2025
 2021-07-20,Yan Liu,"Chronic Illness, Subjective Wellbeing, and Health Services Availability: A Study of Older Adults in Australia",International Journal of Environmental Research and Public Health,Journal Article,16,Global,https://doi.org/10.3390/ijerph18157718,2021
+2022-03-10,Per Block,Circular specifications and “predicting” with information from the future: Errors in the empirical SAOM–TERGM comparison of Leifeld &amp; Cranmer,Network Science,Journal Article,14,Global,https://doi.org/10.1017/nws.2022.6,2022
 2026-02-25,Cecilia Lindgren,Circulating Asprosin Levels and Body Weight Changes in Postmenopausal Women: Findings from the Women’s Health Initiative,The Journal of Nutrition,Journal Article,0,Global,https://doi.org/10.1016/j.tjnut.2026.101441,2026
 2021-09-15,Charles Rahal,Citizens from 13 countries share similar preferences for COVID-19 vaccine allocation priorities,Proceedings of the National Academy of Sciences,Journal Article,40,Global,https://doi.org/10.1073/pnas.2026382118,2021
 2023-01-13,Thomas Rawson,Climate change and communicable diseases in the Gulf Cooperation Council (GCC) countries,Epidemics,Journal Article,7,Global,https://doi.org/10.1016/j.epidem.2023.100667,2023
@@ -168,8 +170,7 @@ Date Available Online,LCDS Author,Paper Title,Journal Name,Publication Type,Cita
 2022-02-15,Yan Liu,Crime at train stations: The role of passenger presence,Applied Geography,Journal Article,13,Global,https://doi.org/10.1016/j.apgeog.2022.102666,2022
 2023-12-01,Rob Salguero-Gómez,Criteria for buffering in ecological modeling,Trends in Ecology &amp; Evolution,Journal Article,5,Global,https://doi.org/10.1016/j.tree.2023.11.006,2023
 2020-07-15,Michael Chong,CSF chitinases before and after symptom onset in amyotrophic lateral sclerosis,Annals of Clinical and Translational Neurology,Journal Article,36,Global,https://doi.org/10.1002/acn3.51114,2020
-2020-07-29,Ginevra Floridi,Daily grandchild care and grandparents' employment: a comparison of four European child-care policy regimes,Ageing and Society,Journal Article,19,Global,https://doi.org/10.1017/s0144686x20000987,2020
-2020-09-30,"Melinda Mills, Valentina Rotondi",Dangerous to claim “no clear association” between intergenerational relationships and COVID-19,Proceedings of the National Academy of Sciences,Journal Article,8,Global,https://doi.org/10.1073/pnas.2016831117,2020
+2020-09-30,"Melinda Mills, Per Block, Valentina Rotondi",Dangerous to claim “no clear association” between intergenerational relationships and COVID-19,Proceedings of the National Academy of Sciences,Journal Article,8,Global,https://doi.org/10.1073/pnas.2016831117,2020
 2021-05-10,Ilya Kashnitsky,Death rates at specific life stages mold the sex gap in life expectancy,Proceedings of the National Academy of Sciences,Journal Article,73,Global,https://doi.org/10.1073/pnas.2010588118,2021
 2022-08-01,Jiaxin Shi,Decomposing Lifespan Variance: A Distributional Approach,Preprint,Preprint,0,Global,https://doi.org/10.31235/osf.io/zd79q,2022
 2019-09-26,"Augustine Kong, Stefania Benonisdottir",Deconstructing the sources of genotype-phenotype associations in humans,Science,Journal Article,258,Global,https://doi.org/10.1126/science.aax3710,2019
@@ -182,7 +183,7 @@ Date Available Online,LCDS Author,Paper Title,Journal Name,Publication Type,Cita
 2025-12-22,Édith Darin,"Demographic figures at risk in the digital era: Resisting commodification, reclaiming the common good",Big Data &amp; Society,Journal Article,0,Global,https://doi.org/10.1177/20539517251403948,2025
 2023-04-04,Cecilia Lindgren,"Demographic, Health and Lifestyle Factors Associated with the Metabolome in Older Women",Metabolites,Journal Article,11,Global,https://doi.org/10.3390/metabo13040514,2023
 2023-04-09,Casey Breen,Demographic Perspectives on Predicting Individual-level Mortality,Preprint,Preprint,3,Global,https://doi.org/10.31235/osf.io/znsqg,2023
-2020-04-16,"David Brazel, Liliana Andriano, Melinda Mills, Valentina Rotondi, Xuejie Ding",Demographic science aids in understanding the spread and fatality rates of COVID-19,Proceedings of the National Academy of Sciences,Journal Article,696,Global,https://doi.org/10.1073/pnas.2004911117,2020
+2020-04-16,"David Brazel, Liliana Andriano, Melinda Mills, Per Block, Valentina Rotondi, Xuejie Ding",Demographic science aids in understanding the spread and fatality rates of COVID-19,Proceedings of the National Academy of Sciences,Journal Article,696,Global,https://doi.org/10.1073/pnas.2004911117,2020
 2025-08-03,Michael Chong,"Design considerations for
                     <i>C9orf72</i>
                     disease prevention trials",Brain,Journal Article,2,Global,https://doi.org/10.1093/brain/awaf290,2025
@@ -285,6 +286,7 @@ Date Available Online,LCDS Author,Paper Title,Journal Name,Publication Type,Cita
 2024-08-27,Mobarak Hossain,"Gender Differences in Socioemotional Skills among Adolescents and Young Adults in Ethiopia, India, Peru and Vietnam",The Journal of Development Studies,Journal Article,4,Global,https://doi.org/10.1080/00220388.2024.2388100,2024
 2025-10-14,Mary K. Roberts,Gender Differences in Willingness to Be Evaluated for Living Kidney Donation,Progress in Transplantation,Journal Article,0,Global,https://doi.org/10.1177/15269248251383950,2025
 2025-10-04,Sander Wagner,Gender Inequalities and Motherhood Penalties across French and German Local Labor Markets,Socius: Sociological Research for a Dynamic World,Journal Article,0,Global,https://doi.org/10.1177/23780231251374110,2025
+2026-02-09,Per Block,Gender-specific (de)valuation of work or  Can money get men into female-typed occupations?,Preprint,Preprint,0,Global,https://doi.org/10.31235/osf.io/sqekx_v1,2026
 2024-01-17,Jennifer Beam Dowd,Generational differences in physical health and disability in the United States and Europe,Preprint,Preprint,2,Global,https://doi.org/10.1101/2024.01.16.24301347,2024
 2022-09-01,Cecilia Lindgren,Genetic analyses of the electrocardiographic QT interval and its components identify additional loci and pathways,Nature Communications,Journal Article,45,Global,https://doi.org/10.1038/s41467-022-32821-z,2022
 2021-11-05,Cecilia Lindgren,Genetic analyses of the QT interval and its components in over 250K individuals identifies new loci and pathways affecting ventricular depolarization and repolarization,Preprint,Preprint,1,Global,https://doi.org/10.1101/2021.11.04.21265866,2021
@@ -354,7 +356,6 @@ Date Available Online,LCDS Author,Paper Title,Journal Name,Publication Type,Cita
 2025-05-14,Rob Salguero-Gómez,Individual heterogeneity drives a plant macroparasite’s life history,Preprint,Preprint,0,Global,https://doi.org/10.1101/2025.05.09.653086,2025
 2024-02-29,"Andrea Tilstra, Arun Frey, Mark Verhagen",Inequalities in healthcare use during the COVID-19 pandemic,Nature Communications,Journal Article,34,Global,https://doi.org/10.1038/s41467-024-45720-2,2024
 2022-11-17,Jiaxin Shi,Inequalities in Retirement Life Span in the United States,The Journals of Gerontology: Series B,Journal Article,9,Global,https://doi.org/10.1093/geronb/gbac180,2022
-2024-10-11,Ginevra Floridi,Inequality and socio-economic divides in parental transfers to young adults in the United States,Social Forces,Journal Article,3,Global,https://doi.org/10.1093/sf/soae148,2024
 2021-06-04,John Ermisch,Instrumental Variable Estimation in Demographic Studies: The LATE interpretation of the IV estimator with heterogenous effects,Preprint,Preprint,0,Global,https://doi.org/10.31235/osf.io/vx9m7,2021
 2021-01-08,Cecilia Lindgren,Insulinemic and Inflammatory Dietary Patterns Show Enhanced Predictive Potential for Type 2 Diabetes Risk in Postmenopausal Women,Diabetes Care,Journal Article,50,Global,https://doi.org/10.2337/dc20-2216,2021
 2025-04-04,Joseph Millard,Integrating multiple evidence streams to understand insect biodiversity change,Science,Journal Article,12,Global,https://doi.org/10.1126/science.adq2110,2025
@@ -368,7 +369,6 @@ Date Available Online,LCDS Author,Paper Title,Journal Name,Publication Type,Cita
                     at 75 years: An empirical review",Population Studies,Journal Article,8,Global,https://doi.org/10.1080/00324728.2021.1996624,2021
 2025-05-12,Michael Chong,IsomiR Utility in Amyotrophic Lateral Sclerosis Prognostication,Preprint,Preprint,0,Global,https://doi.org/10.1101/2025.05.12.25325848,2025
 2022-01-12,David Kirk,"Is Police Misconduct Contagious? Non-trivial Null Findings from Dallas, Texas",Journal of Quantitative Criminology,Journal Article,18,Global,https://doi.org/10.1007/s10940-021-09532-7,2022
-2024-03-29,Ginevra Floridi,Is the association between long-term care and subjective well-being socio-economically stratified? Evidence from Europe,European Societies,Journal Article,3,Global,https://doi.org/10.1080/14616696.2024.2333515,2024
 2019-11-27,Ridhi Kashyap,Is the End of Educational Hypergamy the End of Status Hypergamy? Evidence from Sweden,European Sociological Review,Journal Article,35,Global,https://doi.org/10.1093/esr/jcz065,2019
 2021-11-18,Rob Salguero-Gómez,Journal journeys: Building on our reputation in animal ecology with new ways to publish,Journal of Animal Ecology,Journal Article,0,Global,https://doi.org/10.1111/1365-2656.13622,2021
 2022-11-30,Vincent Straub,Key challenges for the participatory governance of AI in public administration,Preprint,Preprint,5,Global,https://doi.org/10.31235/osf.io/pdcrm,2022
@@ -385,6 +385,7 @@ Date Available Online,LCDS Author,Paper Title,Journal Name,Publication Type,Cita
 2025-09-17,Charles Lanfear,Lead exposure and antisocial behavior: A systematic review of human and animal evidence,Environment International,Journal Article,0,Global,https://doi.org/10.1016/j.envint.2025.109786,2025
 2023-08-30,Rob Salguero-Gómez,Leaf metabolic traits reveal hidden dimensions of plant form and function,Science Advances,Journal Article,35,Global,https://doi.org/10.1126/sciadv.adi4029,2023
 2021-04-07,Mark Verhagen,Learning loss due to school closures during the COVID-19 pandemic,Proceedings of the National Academy of Sciences,Journal Article,998,Global,https://doi.org/10.1073/pnas.2022376118,2021
+2025-02-17,Bent Nielsen,LEAST TRIMMED SQUARES: NUISANCE PARAMETER FREE ASYMPTOTICS,Econometric Theory,Journal Article,0,Global,https://doi.org/10.1017/s0266466624000343,2025
 2019-09-16,Bastian Betthäuser,Left behind? Over-time change in the social mobility of children from unskilled working-class backgrounds in Germany,Acta Sociologica,Journal Article,7,Global,https://doi.org/10.1177/0001699319868524,2019
 2023-08-11,Simon Myers,Leveraging fine-scale population structure reveals conservation in genetic effect sizes between human populations across a range of human phenotypes,Preprint,Preprint,11,Global,https://doi.org/10.1101/2023.08.08.552281,2023
 2020-06-02,"Ridhi Kashyap, Valentina Rotondi",Leveraging mobile phones to attain sustainable development,Proceedings of the National Academy of Sciences,Journal Article,111,Global,https://doi.org/10.1073/pnas.1909326117,2020
@@ -397,6 +398,7 @@ Date Available Online,LCDS Author,Paper Title,Journal Name,Publication Type,Cita
 2023-12-01,"Antonino Polizzi, José Manuel Aburto, Ursula Gazeley",Lifetime risk of maternal near miss morbidity: a novel indicator of maternal health,International Journal of Epidemiology,Journal Article,7,Global,https://doi.org/10.1093/ije/dyad169,2023
 2026-02-09,Rob Salguero-Gómez,"Looking backward for the future: long-term population recovery, habitat associations, and future climatic vulnerability of the critically endangered Sino-Mongolian beaver (Castor fiber birulai) in China",Preprint,Preprint,0,Global,https://doi.org/10.64898/2026.02.07.704560,2026
 2019-12-27,Michael Chong,Machine learning suggests polygenic contribution to cognitive dysfunction in amyotrophic lateral sclerosis,Preprint,Preprint,2,Global,https://doi.org/10.1101/2019.12.23.19014407,2019
+2023-08-26,Per Block,Manual for MoNAn in R,Preprint,Preprint,0,Global,https://doi.org/10.31235/osf.io/8q2xu,2023
 2024-10-05,Édith Darin,Mapping refugee populations at high resolution by unlocking humanitarian administrative data,Journal of International Humanitarian Action,Journal Article,1,Global,https://doi.org/10.1186/s41018-024-00157-6,2024
 2025-10-14,"Casey Breen, Douglas Leasure, Ridhi Kashyap, Xinyi Zhao",Mapping subnational gender gaps in internet and mobile adoption using social media data,Proceedings of the National Academy of Sciences,Journal Article,1,Global,https://doi.org/10.1073/pnas.2416624122,2025
 2024-11-25,Yan Liu,Mapping time-series anthropogenic heat flux using the top-down inventory and temporal downscaling in Beijing-Tianjin-Hebei megaregion of China,International Journal of Digital Earth,Journal Article,0,Global,https://doi.org/10.1080/17538947.2024.2431623,2024
@@ -428,8 +430,11 @@ Date Available Online,LCDS Author,Paper Title,Journal Name,Publication Type,Cita
 2021-11-19,"Ridhi Kashyap, Valentina Rotondi",Mobile Phones and Attitudes Towards Women’s Participation in Politics: Evidence from Africa,Preprint,Preprint,2,Global,https://doi.org/10.31235/osf.io/jqpxt,2021
 2021-11-05,"Ridhi Kashyap, Valentina Rotondi",Mobile Phones and Attitudes toward Women’s Participation in Politics,Sociology of Development,Journal Article,14,Global,https://doi.org/10.1525/sod.2020.0039,2021
 2023-06-30,Joseph Millard,Mobilising central bank digital currency to bend the curve of biodiversity loss,Preprint,Preprint,0,Global,https://doi.org/10.31219/osf.io/j7phu,2023
+2023-01-30,Per Block,Modeling Partitions of Individuals,Sociological Methodology,Journal Article,10,Global,https://doi.org/10.1177/00811750221145166,2023
 2025-01-08,Rob Salguero-Gómez,Modelling forest dynamics using integral projection models (IPMs) and repeat LiDAR,Preprint,Preprint,6,Global,https://doi.org/10.1101/2025.01.06.631514,2025
 2019-12-23,Yan Liu,Modelling urban change with cellular automata: Contemporary issues and future research directions,Progress in Human Geography,Journal Article,73,Global,https://doi.org/10.1177/0309132519895305,2019
+2026-01-06,Per Block,Models for emergent structures in mobility: Specification and individual-level interpretation,Preprint,Preprint,0,Global,https://doi.org/10.31235/osf.io/8nkfj_v1,2026
+2024-06-13,Per Block,MoNAn: Mobility Network Analysis,CRAN: Contributed Packages,Journal Article,0,Global,https://doi.org/10.32614/cran.package.monan,2024
 2024-01-22,Rob Salguero-Gómez,"More social species live longer, have higher generation times, and longer reproductive windows",Preprint,Preprint,0,Global,https://doi.org/10.1101/2024.01.22.575897,2024
 2024-10-28,Rob Salguero-Gómez,"More social species live longer, have longer generation times and longer reproductive windows",Philosophical Transactions of the Royal Society B: Biological Sciences,Journal Article,11,Global,https://doi.org/10.1098/rstb.2022.0459,2024
 2026-02-05,José Manuel Aburto,"Mortality from Homicides, Road Traffic Accidents, and Suicides and Their Impact on Life Expectancy and Lifespan Inequality in Brazil, 2010-2023: A Population Level Demographic Study",Preprint,Preprint,0,Global,https://doi.org/10.2139/ssrn.6172580,2026
@@ -457,6 +462,7 @@ Date Available Online,LCDS Author,Paper Title,Journal Name,Publication Type,Cita
 2022-12-02,Casey Breen,Novel estimates reveal subnational heterogeneities in disease-relevant contact patterns in the United States,PLOS Computational Biology,Journal Article,6,Global,https://doi.org/10.1371/journal.pcbi.1010742,2022
 2023-04-06,"Arun Frey, Douglas Leasure, Evelina Akimova, Francesco Rampazzo, Jiani Yan, Mark Verhagen, Melinda Mills, Ridhi Kashyap",Nowcasting Daily Population Displacement in Ukraine through Social Media Advertising Data,Population and Development Review,Journal Article,35,Global,https://doi.org/10.1111/padr.12558,2023
 2024-09-14,Maria Gargiulo,Obstetric violence in the context of community violence: The case of Mexico,Social Science &amp; Medicine,Journal Article,5,Global,https://doi.org/10.1016/j.socscimed.2024.117348,2024
+2026-01-06,Per Block,Occupational Dark Matter: How Occupations Shape Intergenerational Mobility Beyond Social Class and Status,Preprint,Preprint,0,Global,https://doi.org/10.31235/osf.io/af2pu_v1,2026
 2022-04-09,Michael Chong,Occupational lead exposure and survival with amyotrophic lateral sclerosis,Amyotrophic Lateral Sclerosis and Frontotemporal Degeneration,Journal Article,4,Global,https://doi.org/10.1080/21678421.2022.2059379,2022
 2024-02-20,"Douglas Leasure, Kayla Schulte, Micol Matilde Morellini",Offshoring emissions through used vehicle exports,Nature Climate Change,Journal Article,9,Global,https://doi.org/10.1038/s41558-024-01943-1,2024
 2023-08-07,Arun Frey,On the effect of the New Year’s Eve sexual assaults on anti-refugee violence: a rejoinder to Schwitter and Liebe (2023),European Sociological Review,Journal Article,4,Global,https://doi.org/10.1093/esr/jcad050,2023
@@ -468,12 +474,12 @@ Date Available Online,LCDS Author,Paper Title,Journal Name,Publication Type,Cita
 2022-11-11,Andrea Tilstra,“Outside the Skin”: The Persistence of Black–White Disparities in U.S. Early-Life Mortality,Demography,Journal Article,9,Global,https://doi.org/10.1215/00703370-10346963,2022
 2020-10-18,Ilya Kashnitsky,Outsurvival as a measure of the inequality of lifespans between two populations,Preprint,Preprint,0,Global,https://doi.org/10.31235/osf.io/gsdkx,2020
 2025-01-29,Leo Azzollini,Parents or Peers? Generational Socialisation and Attitudes Towards Migrants Across European Societies,Italian Statistical Society Series on Advances in Statistics,Journal Article,0,Global,https://doi.org/10.1007/978-3-031-64431-3_17,2025
+2019-10-07,Bent Nielsen,Partial Cointegrated Vector Autoregressive Models with Structural Breaks in Deterministic Terms,Econometrics,Journal Article,11,Global,https://doi.org/10.3390/econometrics7040042,2019
 2025-02-21,Vincent Straub,Participatory approaches should be used to address the ethics of social media experiments,Communications Psychology,Journal Article,2,Global,https://doi.org/10.1038/s44271-025-00204-x,2025
-2021-11-08,Ginevra Floridi,Partner Care Arrangements and Well-Being in Mid- and Later Life: The Role of Gender Across Care Contexts,The Journals of Gerontology: Series B,Journal Article,13,Global,https://doi.org/10.1093/geronb/gbab209,2021
 2022-11-26,Ramina Sotoudeh,"Party, Race, and Neutrality: Investigating the Interdependence of Attitudes toward Social Groups",American Sociological Review,Journal Article,11,Global,https://doi.org/10.1177/00031224221135797,2022
 2021-04-30,Cecilia Lindgren,Pasta meal intake in relation to risks of type 2 diabetes and atherosclerotic cardiovascular disease in postmenopausal women : findings from the Women’s Health Initiative,"BMJ Nutrition, Prevention &amp; Health",Journal Article,7,Global,https://doi.org/10.1136/bmjnph-2020-000198,2021
 2024-12-14,Cecilia Lindgren,Pathways From Socioeconomic Factors to Major Cardiovascular Events Among Postmenopausal Veteran and Nonveteran Women: Findings From the Women's Health Initiative,Journal of the American Heart Association,Journal Article,3,Global,https://doi.org/10.1161/jaha.124.037253,2024
-2024-11-20,"Ginevra Floridi, Ramina Sotoudeh",Pathways to independence: The dynamics of parental support in the transition to adulthood,Preprint,Preprint,0,Global,https://doi.org/10.31235/osf.io/xe3rw,2024
+2024-11-20,Ramina Sotoudeh,Pathways to independence: The dynamics of parental support in the transition to adulthood,Preprint,Preprint,0,Global,https://doi.org/10.31235/osf.io/xe3rw,2024
 2022-04-12,Charles Rahal,Patient and clinician characteristics and preferences for increasing participation in placebo surgery trials: a scoping review of attributes to inform a discrete choice experiment,Trials,Journal Article,3,Global,https://doi.org/10.1186/s13063-022-06277-x,2022
 2020-11-08,Aashish Gupta,Pauses and reversals of infant mortality decline in India in 2017 and 2018,Preprint,Preprint,2,Global,https://doi.org/10.31235/osf.io/aqrfn,2020
 2025-05-19,Daniela Urbina,Perceived Fairness of Couples’ Division of Housework: Evidence From a Multi-Factorial Experiment in the United States,Gender &amp; Society,Journal Article,1,Global,https://doi.org/10.1177/08912432251337416,2025
@@ -536,7 +542,7 @@ Date Available Online,LCDS Author,Paper Title,Journal Name,Publication Type,Cita
 2021-03-15,Cecilia Lindgren,Remnant cholesterol is prospectively associated with cardiovascular disease events and all-cause mortality in kidney transplant recipients: the FAVORIT study,Nephrology Dialysis Transplantation,Journal Article,16,Global,https://doi.org/10.1093/ndt/gfab068,2021
 2021-11-18,Maria Gargiulo,Repertoires of conflict-related sexual violence: Introducing the RSVAC data package,Journal of Peace Research,Journal Article,13,Global,https://doi.org/10.1177/00223433211044674,2021
 2025-02-04,Michael Chong,Reply: Overstating harms can have consequences,Brain,Journal Article,0,Global,https://doi.org/10.1093/brain/awaf047,2025
-2020-06-23,"David Brazel, Liliana Andriano, Melinda Mills, Valentina Rotondi, Xuejie Ding",Reply to Nepomuceno et al.: A renewed call for detailed social and demographic COVID-19 data from all countries,Proceedings of the National Academy of Sciences,Journal Article,6,Global,https://doi.org/10.1073/pnas.2009408117,2020
+2020-06-23,"David Brazel, Liliana Andriano, Melinda Mills, Per Block, Valentina Rotondi, Xuejie Ding",Reply to Nepomuceno et al.: A renewed call for detailed social and demographic COVID-19 data from all countries,Proceedings of the National Academy of Sciences,Journal Article,6,Global,https://doi.org/10.1073/pnas.2009408117,2020
 2022-05-04,Charles Rahal,Reply to Spreco et al.: Perceived corruption and preferences for COVID-19 vaccine allocations,Proceedings of the National Academy of Sciences,Journal Article,2,Global,https://doi.org/10.1073/pnas.2201847119,2022
 2023-08-29,Charles Rahal,Response to critique of: ‘Understanding the impact of lockdowns on short-term excess mortality in Australia’ by Gigi Foster and Sanjeev Sabhlok,BMJ Global Health,Journal Article,1,Global,https://doi.org/10.1136/bmjgh-2023-013595,2023
 2024-06-28,Rob Salguero-Gómez,Response to Discretising and validating Keyfitz' entropy for any demographic classification,Methods in Ecology and Evolution,Journal Article,0,Global,https://doi.org/10.1111/2041-210x.14335,2024
@@ -558,9 +564,9 @@ Date Available Online,LCDS Author,Paper Title,Journal Name,Publication Type,Cita
                     <scp>PADRINO</scp>
                     , an open access database of Integral Projection Models",Methods in Ecology and Evolution,Journal Article,19,Global,https://doi.org/10.1111/2041-210x.13910,2022
 2022-09-06,Leo Azzollini,Scar effects of unemployment on generalised social trust: The joint impact of individual and contextual unemployment across Europe,Social Science Research,Journal Article,18,Global,https://doi.org/10.1016/j.ssresearch.2022.102787,2022
-2022-08-30,Ginevra Floridi,"School-based group interpersonal therapy for adolescents with depression in rural Nepal: a mixed methods study exploring feasibility, acceptability, and cost",Global Mental Health,Journal Article,11,Global,https://doi.org/10.1017/gmh.2022.46,2022
 2026-01-12,Ewa Batyra,School Enrollment and Living Arrangements of Children in Sub‐Saharan Africa,Population and Development Review,Journal Article,0,Global,https://doi.org/10.1111/padr.70045,2026
 2020-04-19,Aashish Gupta,Seasonal variation in infant mortality in India,Preprint,Preprint,0,Global,https://doi.org/10.31235/osf.io/x4rv7,2020
+2026-01-29,Per Block,"Seeking Roles, Not Ranks: Occupations in the Formation of Adolescents’ Career Aspirations",Preprint,Preprint,0,Global,https://doi.org/10.31235/osf.io/xc9u6_v1,2026
 2020-01-22,Charles Rahal,Self‐rated health scores predict mortality among people with type 2 diabetes differently across three different country groupings: findings from the ADVANCE and ADVANCE‐ON trials,Diabetic Medicine,Journal Article,10,Global,https://doi.org/10.1111/dme.14237,2020
 2024-12-03,Joshua Wilde,"Senderowicz and Maloney (2022): Comment, Rejoinder, and Erratum",Population and Development Review,Journal Article,0,Global,https://doi.org/10.1111/padr.12704,2024
 2020-11-25,Cecilia Lindgren,Serum folate levels and cognitive performance in the ELSA-Brasil baseline assessment,Arquivos de Neuro-Psiquiatria,Journal Article,4,Global,https://doi.org/10.1590/0004-282x20200074,2020
@@ -571,9 +577,10 @@ Date Available Online,LCDS Author,Paper Title,Journal Name,Publication Type,Cita
 2025-07-17,Jennifer Beam Dowd,Sex Differences in Excess Mortality During the COVID-19 Pandemic,Preprint,Preprint,0,Global,https://doi.org/10.1101/2025.07.15.25331003,2025
 2023-01-27,Cecilia Lindgren,Sex Hormone-Binding Globulin and Risk of Coronary Heart Disease in Men and Women,Clinical Chemistry,Journal Article,34,Global,https://doi.org/10.1093/clinchem/hvac209,2023
 2023-07-29,Michael Chong,SF2Former: Amyotrophic lateral sclerosis identification from multi-center MRI data using spatial and frequency fusion transformer,Computerized Medical Imaging and Graphics,Journal Article,16,Global,https://doi.org/10.1016/j.compmedimag.2023.102279,2023
+2020-12-28,Per Block,Sharing the load: Contagion and tolerance of mood in social networks.,Emotion,Journal Article,14,Global,https://doi.org/10.1037/emo0000952,2020
 2022-12-15,Rob Salguero-Gómez,"Short‐range multispectral imaging is an inexpensive, fast, and accurate approach to estimate biodiversity in a temperate calcareous grassland",Ecology and Evolution,Journal Article,17,Global,https://doi.org/10.1002/ece3.9623,2022
-2022-04-04,"Andrea Tilstra, Ginevra Floridi, Jennifer Beam Dowd, José Manuel Aburto",Significant impacts of the COVID-19 pandemic on race/ethnic differences in USA mortality,Preprint,Preprint,6,Global,https://doi.org/10.1101/2022.04.04.22273385,2022
-2022-08-23,"Ginevra Floridi, Jennifer Beam Dowd, José Manuel Aburto",Significant impacts of the COVID-19 pandemic on race/ethnic differences in US mortality,Proceedings of the National Academy of Sciences,Journal Article,68,Global,https://doi.org/10.1073/pnas.2205813119,2022
+2022-04-04,"Andrea Tilstra, Jennifer Beam Dowd, José Manuel Aburto",Significant impacts of the COVID-19 pandemic on race/ethnic differences in USA mortality,Preprint,Preprint,6,Global,https://doi.org/10.1101/2022.04.04.22273385,2022
+2022-08-23,"Jennifer Beam Dowd, José Manuel Aburto",Significant impacts of the COVID-19 pandemic on race/ethnic differences in US mortality,Proceedings of the National Academy of Sciences,Journal Article,68,Global,https://doi.org/10.1073/pnas.2205813119,2022
 2019-09-18,Yan Liu,Simulating the impact of developers’ capital possession on urban development across a megacity: An agent-based approach,Environment and Planning B: Urban Analytics and City Science,Journal Article,3,Global,https://doi.org/10.1177/2399808319875983,2019
 2025-09-29,Michael Chong,"Skeletal Muscle Biomarkers of Amyotrophic Lateral Sclerosis: A Large‐Scale, Multi‐Cohort Proteomic Study",Annals of Neurology,Journal Article,1,Global,https://doi.org/10.1002/ana.78046,2025
 2024-08-07,"Douglas Leasure, Ridhi Kashyap, Valentina Rotondi",Social capital mediates knowledge gaps in informing sexual and reproductive health behaviours across Africa,Social Science &amp; Medicine,Journal Article,0,Global,https://doi.org/10.1016/j.socscimed.2024.117159,2024
@@ -581,13 +588,11 @@ Date Available Online,LCDS Author,Paper Title,Journal Name,Publication Type,Cita
 2022-11-16,Aashish Gupta,Social disadvantage and child mortality in India: 1993 – 2019,Preprint,Preprint,0,Global,https://doi.org/10.31235/osf.io/5jqcn,2022
 2022-03-02,Aashish Gupta,"Social disadvantage, economic inequality, and life expectancy in nine Indian states",Proceedings of the National Academy of Sciences,Journal Article,30,Global,https://doi.org/10.1073/pnas.2109226119,2022
 2021-07-24,Hampton Gaddy,Social distancing and influenza mortality in 1918 did not increase suicide rates in the United States,Preprint,Preprint,0,Global,https://doi.org/10.31235/osf.io/8pc3m,2021
-2023-01-13,Ginevra Floridi,Social inequalities and the wellbeing of family caregivers across European care regimes,Journal of Family Research,Journal Article,10,Global,https://doi.org/10.20377/jfr-861,2023
-2020-06-04,"Jennifer Beam Dowd, Melinda Mills, Ridhi Kashyap",Social network-based distancing strategies to flatten the COVID-19 curve in a post-lockdown world,Nature Human Behaviour,Journal Article,416,Global,https://doi.org/10.1038/s41562-020-0898-6,2020
+2020-06-04,"Jennifer Beam Dowd, Melinda Mills, Per Block, Ridhi Kashyap",Social network-based distancing strategies to flatten the COVID-19 curve in a post-lockdown world,Nature Human Behaviour,Journal Article,416,Global,https://doi.org/10.1038/s41562-020-0898-6,2020
 2020-01-07,Bastian Betthäuser,"Social origins, cognitive ability, educational attainment and Social Class Position in Britain: A birth cohort and life-course perspective",Preprint,Preprint,1,Global,https://doi.org/10.31235/osf.io/wtxn6,2020
 2020-06-05,Cecilia Lindgren,"Social Support, Social Network Size, Social Strain, Stressful Life Events, and Coronary Heart Disease in Women With Type 2 Diabetes: A Cohort Study Based on the Women’s Health Initiative",Diabetes Care,Journal Article,26,Global,https://doi.org/10.2337/dc19-2065,2020
 2022-09-08,José Manuel Aburto,Socio-demographic inequalities and excess non-COVID-19 mortality during the COVID-19 pandemic: a data-driven analysis of 1 069 174 death certificates in Mexico,International Journal of Epidemiology,Journal Article,35,Global,https://doi.org/10.1093/ije/dyac184,2022
 2025-05-21,Thomas Rawson,Socioeconomic and temporal heterogeneity in SARS-CoV-2 exposure and disease in England from May 2020 to February 2023,Science Advances,Journal Article,1,Global,https://doi.org/10.1126/sciadv.adu8678,2025
-2020-09-08,Ginevra Floridi,Socioeconomic Inequalities in Home-Care Use Across Regional Long-term Care Systems in Europe,The Journals of Gerontology: Series B,Journal Article,38,Global,https://doi.org/10.1093/geronb/gbaa139,2020
 2022-04-29,Ilya Kashnitsky,Socioeconomic inequalities in survival to retirement age: a register-based analysis,Preprint,Preprint,7,Global,https://doi.org/10.31219/osf.io/8wbdv,2022
 2022-01-27,Yan Liu,"Spatially-explicit prediction of low-density peri-urban development: comparison between urban and rural scenarios in the Moreton Bay Region in South East Queensland, Australia",Environment and Planning B: Urban Analytics and City Science,Journal Article,2,Global,https://doi.org/10.1177/23998083211069382,2022
 2021-12-16,Yan Liu,Spatial variations in cycling dissonance: The case of commuting in Greater Brisbane,International Journal of Sustainable Transportation,Journal Article,3,Global,https://doi.org/10.1080/15568318.2021.2004628,2021
@@ -678,6 +683,7 @@ Date Available Online,LCDS Author,Paper Title,Journal Name,Publication Type,Cita
 2021-05-25,Aashish Gupta,The scale of Gujarat’s mortality crisis,Preprint,Preprint,2,Global,https://doi.org/10.31235/osf.io/2wae5,2021
 2021-04-27,Leo Azzollini,The Scar Effects of Unemployment on Electoral Participation: Withdrawal and Mobilization across European Societies,European Sociological Review,Journal Article,20,Global,https://doi.org/10.1093/esr/jcab016,2021
 2020-10-13,Ewa Batyra,The socioeconomic dynamics of trends in female genital mutilation/cutting across Africa,BMJ Global Health,Journal Article,7,Global,https://doi.org/10.1136/bmjgh-2020-003088,2020
+2025-03-01,Per Block,The socio-organisational embeddedness of work-life mobility,Research in Social Stratification and Mobility,Journal Article,1,Global,https://doi.org/10.1016/j.rssm.2025.101032,2025
 2023-05-15,Xinyi Zhao,The Spatiotemporal Elasticity of Age Structure in China’s Interprovincial Migration System,Sustainability,Journal Article,0,Global,https://doi.org/10.3390/su15108001,2023
 2021-03-22,Joseph Millard,The species awareness index as a conservation culturomics metric for public biodiversity awareness,Conservation Biology,Journal Article,34,Global,https://doi.org/10.1111/cobi.13701,2021
 2020-08-20,Joseph Millard,The Species Awareness Index (SAI): a Wikipedia-derived conservation culturomics metric for public biodiversity awareness,Preprint,Preprint,1,Global,https://doi.org/10.1101/2020.08.17.254177,2020
@@ -706,6 +712,7 @@ Date Available Online,LCDS Author,Paper Title,Journal Name,Publication Type,Cita
             <i>SOD1</i>
             ALS",New England Journal of Medicine,Journal Article,752,Global,https://doi.org/10.1056/nejmoa2204705,2022
 2020-05-08,"Ridhi Kashyap, Valentina Rotondi",Trust in science and experts during the COVID-19 outbreak in Italy,Preprint,Preprint,5,Global,https://doi.org/10.31219/osf.io/twuhj,2020
+2025-10-17,Bent Nielsen,Two-sample Age-period-cohort Models,Sociological Methods &amp; Research,Journal Article,0,Global,https://doi.org/10.1177/00491241251376509,2025
 2026-02-02,Aashish Gupta,Uncertainty about maternal mortality in India: New estimates from the National Family Health Survey,Preprint,Preprint,0,Global,https://doi.org/10.31235/osf.io/8as72_v2,2026
 2022-10-19,Aashish Gupta,"Uncertainty about maternal mortality in India:  New, higher estimates from the National Family Health Survey-4",Preprint,Preprint,3,Global,https://doi.org/10.31235/osf.io/8as72,2022
 2024-10-28,Rob Salguero-Gómez,Understanding age and society using natural populations,Philosophical Transactions of the Royal Society B: Biological Sciences,Journal Article,3,Global,https://doi.org/10.1098/rstb.2022.0469,2024
@@ -716,6 +723,7 @@ Date Available Online,LCDS Author,Paper Title,Journal Name,Publication Type,Cita
 2024-11-16,Valentina Rotondi,Understanding sustainability perceptions: Insights from textual analysis and a survey experiment,World Development Sustainability,Journal Article,6,Global,https://doi.org/10.1016/j.wds.2024.100182,2024
 2022-11-11,Charles Rahal,Understanding the impact of lockdowns on short-term excess mortality in Australia,BMJ Global Health,Journal Article,6,Global,https://doi.org/10.1136/bmjgh-2022-009032,2022
 2020-01-20,Bastian Betthäuser,Understanding the mobility chances of children from working‐class backgrounds in Britain: How important are cognitive ability and locus of control?,The British Journal of Sociology,Journal Article,16,Global,https://doi.org/10.1111/1468-4446.12732,2020
+2022-12-29,Per Block,Understanding the self-organization of occupational sex segregation with mobility networks,Social Networks,Journal Article,13,Global,https://doi.org/10.1016/j.socnet.2022.12.004,2022
 2020-01-22,Bastian Betthäuser,Understanding the Social Mobility Chances of Children from Working- Class Backgrounds in Britain: How Important are Cognitive Ability and Locus of Control?,Preprint,Preprint,1,Global,https://doi.org/10.31235/osf.io/rqtwc,2020
 2021-06-16,Mobarak Hossain,Unequal experience of COVID-induced remote schooling in four developing countries,International Journal of Educational Development,Journal Article,37,Global,https://doi.org/10.1016/j.ijedudev.2021.102446,2021
 2026-01-08,Valentina Rotondi,Unequal Happiness Gains from Summer Breaks: Evidence from European Parents (Journal Publication Now Available),Social Indicators Research,Journal Article,0,Global,https://doi.org/10.1007/s11205-025-03797-2,2026
@@ -740,6 +748,7 @@ Date Available Online,LCDS Author,Paper Title,Journal Name,Publication Type,Cita
 2020-11-24,Douglas Leasure,Using GIS and Machine Learning to Classify Residential Status of Urban Buildings in Low and Middle Income Settings,Remote Sensing,Journal Article,34,Global,https://doi.org/10.3390/rs12233847,2020
 2021-11-17,John Ermisch,Using Inverse Probability Weighting to Address Post-Outcome Collider Bias,Sociological Methods &amp; Research,Journal Article,7,Global,https://doi.org/10.1177/00491241211043131,2021
 2020-04-26,Hampton Gaddy,Using local knowledge in emerging infectious disease research,Preprint,Preprint,0,Global,https://doi.org/10.31235/osf.io/eygkw,2020
+2021-03-30,Per Block,Using mobility networks to understand occupational sex segregation,Preprint,Preprint,0,Global,https://doi.org/10.31235/osf.io/g3ev5,2021
 2022-04-17,Antonino Polizzi,Using Singular Value Decomposition to Understand Variation Across Mortality Schedules from Multiple Populations,Preprint,Preprint,0,Global,https://doi.org/10.31235/osf.io/uqwxj,2022
 2021-01-14,Yan Liu,Using WeChat Data to Understand Residential Mobility of Mainland China-Born Migrants in Australia: A Segmented Assimilation Perspective,Applied Spatial Analysis and Policy,Journal Article,3,Global,https://doi.org/10.1007/s12061-020-09368-x,2021
 2020-05-08,Michael Chong,Validation of serum neurofilaments as prognostic and potential pharmacodynamic biomarkers for ALS,Neurology,Journal Article,180,Global,https://doi.org/10.1212/wnl.0000000000009559,2020
@@ -756,6 +765,7 @@ Commission in Colombia",Journal of Open Source Software,Journal Article,1,Global
 2023-07-20,Hampton Gaddy,“We are our memory”: Quantifying the demographic imprints of the past,Preprint,Preprint,0,Global,https://doi.org/10.31235/osf.io/6r5b8,2023
 2025-03-21,Mobarak Hossain,What Drives Immigrant Inequalities in Career Growth in the Age of Mass Migration?,International Migration Review,Journal Article,1,Global,https://doi.org/10.1177/01979183251322739,2025
 2021-09-28,Ilya Kashnitsky,"What is life expectancy? And, even more important, what it isn't",Preprint,Preprint,0,Global,https://doi.org/10.31219/osf.io/s2nrp,2021
+2025-11-12,Per Block,When and why we should stop analysing friendship networks,Preprint,Preprint,0,Global,https://doi.org/10.31235/osf.io/hv4fa_v1,2025
 2025-11-11,Evelina Akimova,"When children shape their families: Evocative effects analysis of 40,000 trios from the Norwegian Mother-Father-and-Child Study",Preprint,Preprint,0,Global,https://doi.org/10.31235/osf.io/65kdw_v2,2025
 2025-06-20,Charles Lanfear,When Do Guardians Deter Offending? An Experimental Test of Informal Social Control Mechanisms,Journal of Quantitative Criminology,Journal Article,1,Global,https://doi.org/10.1007/s10940-025-09616-8,2025
 2023-05-28,Leo Azzollini,Where I Stand and What I Stand For. Subjective Social Status and Attitudes Towards Redistribution,Preprint,Preprint,0,Global,https://doi.org/10.31219/osf.io/849g5,2023
