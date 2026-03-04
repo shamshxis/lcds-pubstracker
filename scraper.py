@@ -8,9 +8,9 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # --- CONFIGURATION ---
 mailto = os.environ.get('USER_EMAIL', 'research_team@example.com')
-HEADERS = {'User-Agent': f'LCDS-Tracker/7.0 (mailto:{mailto})'}
+HEADERS = {'User-Agent': f'LCDS-Tracker/8.0 (mailto:{mailto})'}
 
-# --- 1. STAFF DISCOVERY (Based on your HTML file) ---
+# --- 1. STAFF DISCOVERY (Targeting your HTML file structure) ---
 def get_staff_list():
     print(f"[{datetime.now().time()}] 🔍 Scanning LCDS website...")
     url = "https://www.demography.ox.ac.uk/people"
@@ -20,35 +20,33 @@ def get_staff_list():
         res = requests.get(url, headers=HEADERS, timeout=30)
         soup = BeautifulSoup(res.text, 'html.parser')
         
-        # 1. Primary Grid Selector (From your HTML file structure)
-        # Look for the specific Drupal views structure
-        for span in soup.select('div.views-field-title span.field-content'):
-            text = span.get_text(strip=True)
+        # PRIMARY SELECTOR: Based on the Drupal View in your uploaded HTML
+        # Look for the 'views-field-title' inside the people grid
+        for div in soup.find_all("div", class_="views-field-title"):
+            text = div.get_text(strip=True)
             if text: names.add(text)
-            
-        # 2. Backup Selector (Side titles)
-        for h3 in soup.select('h3.paragraph-side-title'):
+
+        # SECONDARY SELECTOR: Side titles (Melinda often appears here)
+        for h3 in soup.select("h3.paragraph-side-title"):
             names.add(h3.get_text(strip=True))
 
-        # 3. Clean & Validate
+        # CLEANING & VALIDATION
         clean_names = set()
         for raw in names:
             # Remove titles
             clean = raw.replace('Dr ', '').replace('Prof ', '').replace('Professor ', '').strip()
             
             # Junk Filter
-            junk = ["View profile", "Read more", "Contact", "Email", "Research", "Team", "Profile"]
+            junk = ["View profile", "Read more", "Contact", "Email", "Research", "Team", "Profile", "News"]
             if any(x.lower() in clean.lower() for x in junk): continue
             
             # Must look like a name
             if len(clean.split()) >= 2 and len(clean) < 40 and not any(char.isdigit() for char in clean):
                 clean_names.add(clean)
 
-        # 4. HARDCODED LEADS (Never miss these)
-        # Andrew Stephen added explicitly to ensure we check him against the new logic
-        key_people = ["Melinda Mills", "Jennifer Dowd", "Thomas Rawson", "Per Block", "Andrew Stephen", "Ridhu Kashyap"]
-        for p in key_people:
-            clean_names.add(p)
+        # HARDCODED SAFETY NET (For complex profiles)
+        leads = ["Melinda Mills", "Jennifer Dowd", "Thomas Rawson", "Per Block", "Andrew Stephen", "Ridhu Kashyap"]
+        for l in leads: clean_names.add(l)
         
         final_list = sorted(list(clean_names))
         print(f"✅ Found {len(final_list)} researchers.")
@@ -58,12 +56,12 @@ def get_staff_list():
         print(f"❌ Scrape error: {e}")
         return ["Melinda Mills", "Jennifer Dowd", "Andrew Stephen"]
 
-# --- 2. ORCID WITH "TOPIC & AFFILIATION FIREWALL" ---
+# --- 2. ORCID WITH "TOPIC FIREWALL" ---
 def get_orcid(name):
     """
     STRICT FILTER:
     - Must be Oxford Affiliated.
-    - Must match Research Keywords (Demography, Sociology, Marketing, etc).
+    - Must match Research Keywords (Demography, Sociology, Marketing, Zoology).
     - Must NOT match pure Clinical/Engineering keywords (Cancer, Surgery).
     """
     try:
@@ -72,37 +70,37 @@ def get_orcid(name):
             results = r.json().get('results', [])
             
             for person in results:
-                # Get affiliation history
+                # Build affiliation text
                 affils = [a.get('institution', {}).get('display_name', '').lower() for a in person.get('affiliations', [])]
                 last_known = person.get('last_known_institution', {}).get('display_name', '').lower()
                 affils.append(last_known)
                 full_text = " ".join(affils)
                 
-                # --- RULE 1: THE OXFORD CONNECTION ---
+                # RULE 1: OXFORD CONNECTION
                 if "oxford" not in full_text: continue
                 
-                # --- RULE 2: THE TOPIC WHITELIST (Expanded for Andrew Stephen) ---
+                # RULE 2: TOPIC WHITELIST (Includes Marketing for Andrew Stephen)
                 valid_keywords = [
                     "demographic", "sociology", "nuffield", "leverhulme", 
                     "population", "social policy", "zoology", "economics", 
                     "epidemiology", "public health", "statistics",
-                    "marketing", "business", "consumer", "saïd", "management" # Added for Andrew Stephen
+                    "marketing", "business", "consumer", "saïd", "management"
                 ]
                 if not any(k in full_text for k in valid_keywords): continue
                 
-                # --- RULE 3: THE BANLIST (Admins, Engineers, Pure Clinical) ---
+                # RULE 3: BAN LIST (Admins, Engineers, Pure Clinical)
+                # Blocks "Wen Su" (Engineer) and "Louise Allcock" (Admin)
                 ban_keywords = [
                     "administrator", "coordinator", "finance", 
                     "civil engineering", "materials science", 
-                    "oncology", "surgery", "cancer research", "clinical medicine" # Added to block the wrong Andrew Stephen
+                    "oncology", "surgery", "cancer research", "clinical medicine"
                 ]
                 
-                # Exception: If they have "demography" or "marketing" (for Andrew) in title, ignore ban
+                # Exception: If "Demography" or "Marketing" is present, ignore the ban
                 is_banned = any(b in full_text for b in ban_keywords)
                 has_override = any(x in full_text for x in ["demographic", "marketing", "saïd"])
                 
-                if is_banned and not has_override:
-                    continue 
+                if is_banned and not has_override: continue 
                 
                 return person['orcid'].replace('https://orcid.org/', '')
     except: pass
